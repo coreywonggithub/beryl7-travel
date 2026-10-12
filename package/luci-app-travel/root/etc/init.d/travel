@@ -1,0 +1,74 @@
+#!/bin/sh /etc/rc.common
+# Travel panel service: the login-page watcher and the uplink health check,
+# plus applying the mode slider's position and Tailscale's settings once at boot.
+
+START=99
+USE_PROCD=1
+
+boot() {
+	# Tailscale must never manage the firewall here: it writes
+	# src_valid_mark=1, which silently breaks nikki's TPROXY (nikki #903).
+	# The router's own zone for tailscale0 does that job instead.
+	( for i in $(seq 1 30); do
+		tailscale set --netfilter-mode=off --accept-dns=false >/dev/null 2>&1 && break
+		sleep 2
+	  done
+	  rm -f /var/run/travel/phone.*
+	  /usr/libexec/travel/ttl
+	  /usr/libexec/travel/switch boot
+	  /usr/libexec/travel/egress apply ) &
+	start
+}
+
+start_service() {
+	local health log_events
+
+	config_load travel
+	config_get_bool health main health 1
+	config_get_bool log_events main log_events 1
+
+	procd_open_instance
+	procd_set_param command /usr/libexec/travel/watch
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+	# routes around an uplink that stays connected with no internet (2026-10-08); travel.main.health=0 and
+	# "/etc/init.d/travel restart" turn it off without a new image, and no detour of its stays behind.
+	# (No reload trigger on purpose: the panel commits travel often, and each would re-run this.)
+	if [ "$health" = 1 ]; then
+		procd_open_instance health
+		procd_set_param command /usr/bin/ucode /usr/libexec/travel/health.uc
+		procd_set_param respawn 3600 5 0
+		procd_close_instance
+	else
+		health_give_back
+	fi
+	# Wi-Fi events (joins, leaves, disconnects with their reason codes, scans, channel switches) and every
+	# route, address and link change, into the system log as they happen (2026-10-09, Corey: "every detail
+	# and every problem"). procd tags each line with the program, iw[pid] and ip[pid]. Both flush per line
+	# (measured 2026-10-09 through a pipe). travel.main.log_events=0 and a restart turn them off.
+	if [ "$log_events" = 1 ]; then
+		procd_open_instance wifi_events
+		procd_set_param command /usr/sbin/iw event -t
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_set_param respawn 3600 5 0
+		procd_close_instance
+		procd_open_instance route_events
+		procd_set_param command /sbin/ip monitor route address link
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_set_param respawn 3600 5 0
+		procd_close_instance
+	fi
+}
+
+# the health check's detour (a "proto 251" default route) goes with it
+health_give_back() {
+	ip -4 route flush proto 251 >/dev/null 2>&1
+	rm -f /var/run/travel/failover
+}
+
+stop_service() {
+	health_give_back
+}
+

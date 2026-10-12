@@ -1,0 +1,18 @@
+#!/usr/bin/ucode
+// Sandbox only: netifd's "network.wireless" object. Radios and SSIDs come
+// from /etc/config/wireless; see sandbox.uc.
+import { serve, wireless_status } from 'sandbox';
+
+serve({
+	status: {
+		args: { device: 'str' },
+		call: (a) => {
+			let s = wireless_status();
+			return a.device ? (s[a.device] ? { [a.device]: s[a.device] } : {}) : s;
+		}
+	},
+	up: { call: () => ({}) },
+	down: { call: () => ({}) },
+	reconf: { call: () => ({}) },
+	notify: { call: () => ({}) }
+});

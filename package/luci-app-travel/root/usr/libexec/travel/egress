@@ -1,0 +1,198 @@
+#!/bin/sh
+# Turn on exactly one way out and turn the others off:
+#   direct     the hotel's internet, no tunnel
+#   exitnode   a Tailscale exit node (travel.main.exit_node)
+#   wireguard  a WireGuard VPN profile (travel.main.wg): UniFi or any provider
+#   nikki      the nikki proxy (China)
+# Called by the panel, the mode switch, the login-page watcher and uplink
+# changes. It only drives existing OpenWrt tools: tailscale, netifd, dnsmasq
+# and nikki's own service.
+#
+# Usage: egress apply [uplink]
+#   "uplink" means the internet source just changed, so a running WireGuard
+#   tunnel is restarted to re-pin its endpoint route to the new source.
+
+. /lib/functions/network.sh
+. /usr/libexec/travel/lib.sh
+
+DM='dhcp.@dnsmasq[0]'
+
+tether_ifaces() {
+	ubus list 'network.interface.tether_*' 2>/dev/null | sed 's/^network\.interface\.//'
+}
+
+# DNS servers the internet sources handed out (the hotel's resolver)
+uplink_dns() {
+	local i d all=""
+	network_flush_cache
+	for i in wan trm_wwan $(tether_ifaces); do
+		network_get_dnsserver d "$i" && all="$all $d"
+	done
+	echo $all
+}
+
+# DNS follows the traffic. With a tunnel on, dnsmasq asks $1 (reached through
+# the tunnel) instead of the hotel, except for travelmate's login-page probe
+# host, which keeps using the hotel's resolver so a new login page is noticed.
+# Direct mode restores whatever the user had before.
+dns_tunnel() {
+	local servers="$1" s dns probe before
+	if [ "$(tget dns_state)" != tunnel ]; then
+		tset dns_saved_server "$(uci -q get "$DM.server")"
+		tset dns_saved_noresolv "$(uci -q get "$DM.noresolv")"
+	fi
+	probe="$(uci -q get travelmate.global.trm_captiveurl)"
+	probe="${probe:-http://detectportal.firefox.com}"
+	probe="${probe#*://}"
+	probe="${probe%%/*}"
+
+	before="$(uci -q get "$DM.server") $(uci -q get "$DM.noresolv")"
+	uci -q delete "$DM.server"
+	for s in $(tget dns_saved_server); do
+		case "$s" in
+		/*) uci add_list "$DM.server=$s" ;;	# keep the user's per-domain rules
+		esac
+	done
+	for dns in $(uplink_dns); do
+		uci add_list "$DM.server=/$probe/$dns"
+	done
+	for s in $servers; do
+		uci add_list "$DM.server=$s"
+	done
+	uci set "$DM.noresolv=1"
+	tset dns_state tunnel
+
+	if [ "$before" = "$(uci -q get "$DM.server") $(uci -q get "$DM.noresolv")" ]; then
+		uci revert dhcp
+	else
+		uci commit dhcp
+		/etc/init.d/dnsmasq reload
+	fi
+}
+
+dns_direct() {
+	local s n
+	[ "$(tget dns_state)" = tunnel ] || return 0
+	uci -q delete "$DM.server"
+	for s in $(tget dns_saved_server); do
+		uci add_list "$DM.server=$s"
+	done
+	n="$(tget dns_saved_noresolv)"
+	if [ -n "$n" ]; then
+		uci set "$DM.noresolv=$n"
+	else
+		uci -q delete "$DM.noresolv"
+	fi
+	uci commit dhcp
+	tset dns_state direct
+	/etc/init.d/dnsmasq reload
+}
+
+wg_all_down() {
+	local w
+	for w in $(wg_profiles); do
+		ifstatus "$w" 2>/dev/null | grep -q '"up": true' && ifdown "$w"
+	done
+}
+
+nikki_on() {
+	uci -q set nikki.config.enabled=1
+	uci -q commit nikki
+	/etc/init.d/nikki restart >/dev/null 2>&1
+}
+
+nikki_off() {
+	[ "$(uci -q get nikki.config.enabled)" = 1 ] || return 0
+	uci -q set nikki.config.enabled=0
+	uci -q commit nikki
+	/etc/init.d/nikki stop >/dev/null 2>&1
+}
+
+apply() {
+	local reason="$1" want active err="" exit_ip wg dns
+
+	want="$(tget mode direct)"
+	valid_mode "$want" || want=direct
+	active="$want"
+
+	# A hotel login page is showing: everything waits, direct, until it's gone
+	if [ -e "$TRAVEL_RUN/portal" ] && [ "$(tget portal_hold 1)" = 1 ]; then
+		active=direct
+	fi
+
+	# Can the chosen way out work at all? If not, stay direct and say why.
+	case "$active" in
+	exitnode)
+		exit_ip="$(tget exit_node)"
+		if [ -z "$exit_ip" ]; then
+			err="Choose an exit node first."
+		elif [ "$(tsinfo state)" != Running ]; then
+			err="Tailscale isn't logged in."
+		elif [ "$(tsinfo online "$exit_ip")" != true ]; then
+			err="That exit node is offline."
+		fi
+		;;
+	wireguard)
+		wg="$(tget wg)"
+		[ -n "$wg" ] && [ "$(uci -q get "network.$wg.proto")" = wireguard ] ||
+			err="Choose a VPN profile first."
+		;;
+	nikki)
+		[ -x /etc/init.d/nikki ] || err="nikki isn't installed."
+		;;
+	esac
+	[ -n "$err" ] && active=direct
+
+	# Everything else off first, so two tunnels never fight over the default route
+	[ "$active" = exitnode ] || tailscale set --exit-node= >/dev/null 2>&1
+	[ "$active" = wireguard ] || wg_all_down
+	[ "$active" = nikki ] || nikki_off
+
+	case "$active" in
+	exitnode)
+		if ! tailscale set --exit-node="$exit_ip" --exit-node-allow-lan-access=true >/dev/null 2>&1; then
+			tailscale set --exit-node= >/dev/null 2>&1
+			err="Tailscale refused that exit node."
+			active=direct
+		fi
+		;;
+	wireguard)
+		if [ "$reason" = uplink ] || ! ifstatus "$wg" 2>/dev/null | grep -q '"up": true'; then
+			ifup "$wg"
+		fi
+		;;
+	nikki)
+		/etc/init.d/nikki running >/dev/null 2>&1 || nikki_on
+		;;
+	esac
+
+	case "$active" in
+	exitnode)
+		dns_tunnel "$(tget tunnel_dns '1.1.1.1 8.8.8.8')"
+		;;
+	wireguard)
+		dns="$(uci -q get "network.$wg.travel_dns")"
+		dns_tunnel "${dns:-$(tget tunnel_dns '1.1.1.1 8.8.8.8')}"
+		;;
+	*)
+		dns_direct	# nikki answers DNS itself
+		;;
+	esac
+
+	printf '%s' "$active" >"$TRAVEL_RUN/active"
+	printf '%s' "$err" >"$TRAVEL_RUN/error"
+	tlog "wanted $want, running $active${err:+ ($err)}"
+}
+
+case "$1" in
+apply)
+	LOCK="$TRAVEL_RUN/egress.lock"
+	lock "$LOCK"
+	trap 'lock -u "$LOCK"' EXIT
+	apply "$2"
+	;;
+*)
+	echo "usage: $0 apply [uplink]" >&2
+	exit 1
+	;;
+esac

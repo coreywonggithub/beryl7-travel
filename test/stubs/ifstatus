@@ -1,0 +1,2 @@
+#!/bin/sh
+cat "/tmp/ifstatus-$1.json" 2>/dev/null || echo '{ "up": false }'

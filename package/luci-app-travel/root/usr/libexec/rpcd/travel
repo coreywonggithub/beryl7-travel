@@ -1,0 +1,863 @@
+#!/bin/sh
+# rpcd plugin: the ubus object "travel" behind the panel (docs/panel-api.md).
+# Deliberately thin: every command maps onto OpenWrt's own tools (uci,
+# netifd, travelmate, tailscale, wireguard, firewall4, dnsmasq).
+
+. /usr/share/libubox/jshn.sh
+. /usr/libexec/travel/lib.sh
+
+ok() {
+	json_init
+	json_add_boolean ok 1
+	[ -n "$1" ] && json_add_string "$1" "$2"
+	json_dump
+	exit 0
+}
+
+fail() {
+	json_init
+	json_add_boolean ok 0
+	json_add_string error "$1"
+	json_dump
+	exit 0
+}
+
+valid_mac() {
+	echo "$1" | grep -qiE '^([0-9a-f]{2}:){5}[0-9a-f]{2}$'
+}
+
+# the wifi-device (radio0, radio1, ...) serving a band
+radio_for_band() {
+	uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)\.band='$1'$/\1/p" | head -n1
+}
+
+# is a station (the hotel uplink) running on this radio right now?
+radio_locked() {
+	local dev
+	dev="$(ifstatus trm_wwan 2>/dev/null | jsonfilter -q -e '@.l3_device')"
+	[ -n "$dev" ] || return 1
+	ubus call network.wireless status 2>/dev/null |
+		jsonfilter -q -e "@.$1.interfaces[@.config.mode='sta'].ifname" | grep -qx "$dev"
+}
+
+random_mac() {
+	local h first
+	h="$(hexdump -n 6 -e '6/1 "%02x"' /dev/urandom)"
+	first=$(( (0x${h:0:2} & 0xfc) | 0x02 ))	# unicast, locally administered
+	printf '%02x:%s:%s:%s:%s:%s' "$first" "${h:2:2}" "${h:4:2}" "${h:6:2}" "${h:8:2}" "${h:10:2}"
+}
+
+# remember the addresses the panel made up (the last 20), so status can tell "random" from "custom":
+# a private address copied from a phone is locally administered too
+mac_random_note() {
+	local all m
+	all="$(uci -q get travel.main.mac_random) $1"
+	uci -q delete travel.main.mac_random
+	for m in $(echo $all | tr ' ' '\n' | tail -n 20); do
+		uci add_list "travel.main.mac_random=$m"
+	done
+	uci commit travel
+}
+
+# the travelmate uplink section (anonymous) for an SSID
+trm_uplink_for() {
+	uci -q show travelmate | sed -n "s/^travelmate\.\([^.=]*\)\.ssid='\(.*\)'$/\1 \2/p" |
+		while read -r sid s; do [ "$s" = "$1" ] && echo "$sid"; done
+}
+
+wifi_sta_for() {
+	uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)\.ssid='\(.*\)'$/\1 \2/p" |
+		while read -r sid s; do
+			[ "$s" = "$1" ] && [ "$(uci -q get "wireless.$sid.mode")" = sta ] && echo "$sid"
+		done
+}
+
+list() {
+	cat <<-'EOF'
+	{
+		"status": {},
+		"set_mode": { "mode": "str", "exit_node": "str", "wg": "str" },
+		"set_switch_map": { "on": "str", "off": "str" },
+		"wifi_scan": { "band": "str" },
+		"wifi_join": { "ssid": "str", "band": "str", "security": "str", "bssid": "str", "key": "str", "identity": "str", "password": "str" },
+		"wifi_forget": { "ssid": "str" },
+		"wifi_saved": {},
+		"login_get": { "ssid": "str" },
+		"login_set": { "ssid": "str", "method": "str", "code": "str", "user": "str" },
+		"set_ap": { "ssid": "str", "key": "str", "country": "str" },
+		"set_channel": { "band": "str", "channel": "str" },
+		"mac": { "target": "str", "action": "str", "mac": "str" },
+		"device_block": { "mac": "str", "blocked": true },
+		"device_rename": { "mac": "str", "name": "str" },
+		"device_kind": { "mac": "str", "kind": "str" },
+		"tailscale_login": {},
+		"tailscale_logout": {},
+		"wg_import": { "label": "str", "conf": "str" },
+		"wg_delete": { "name": "str" },
+		"uplink_order": { "order": [] },
+		"set_hide_router": { "enabled": true },
+		"set_region": { "region": "str", "world_mode": "str" }
+	}
+	EOF
+}
+
+m_set_mode() {
+	local mode exit_node wg err
+	json_get_vars mode exit_node wg
+	valid_mode "$mode" || fail "Unknown mode."
+	[ -n "$exit_node" ] && tset exit_node "$exit_node"
+	[ -n "$wg" ] && tset wg "$wg"
+	tset mode "$mode"
+	/usr/libexec/travel/egress apply >/dev/null 2>&1
+	err="$(cat "$TRAVEL_RUN/error" 2>/dev/null)"
+	[ -n "$err" ] && fail "$err"
+	ok
+}
+
+m_set_switch_map() {
+	local on off
+	json_get_vars on off
+	valid_mode "$on" && valid_mode "$off" || fail "Unknown mode."
+	tset switch_on "$on"
+	tset switch_off "$off"
+	ok
+}
+
+m_wifi_join() {
+	local ssid band security bssid key identity password radio enc sid n keep=0 saved_enc=""
+	json_get_vars ssid band security bssid key identity password
+	[ -n "$ssid" ] || fail "Enter the network name."
+	[ ${#ssid} -le 32 ] || fail "That network name is too long."
+	radio="$(radio_for_band "${band:-5g}")"
+	[ -n "$radio" ] || radio="$(radio_for_band 2g)"
+	[ -n "$radio" ] || fail "No Wi-Fi radio found."
+
+	# Same layout travelmate's own page writes: a disabled station section
+	# named trm_uplinkN on network trm_wwan, plus a travelmate uplink entry.
+	sid="$(wifi_sta_for "$ssid" | head -n1)"
+	[ -n "$sid" ] && saved_enc="$(uci -q get "wireless.$sid.encryption")"
+
+	case "$security" in
+	open) enc=none ;;
+	owe) enc=owe ;;
+	sae) enc=sae ;;
+	sae-mixed) enc=sae-mixed ;;
+	enterprise) enc=wpa2 ;;
+	"") enc="${saved_enc:-psk2}" ;;	# Connect on a saved network sends no security
+	*) enc=psk2 ;;
+	esac
+	# A saved network joined with no password keeps the one it has, unless its security
+	# changed: the panel's Connect button, and an empty password in the Join dialog
+	# (2026-10-05: a saved network's password had to be typed again to switch to it)
+	[ -n "$sid" ] && [ -z "$key$identity$password" ] && [ "$enc" = "$saved_enc" ] && keep=1
+	[ "$keep" = 1 ] || case "$enc" in
+	psk2|sae|sae-mixed)
+		[ ${#key} -ge 8 ] && [ ${#key} -le 63 ] || fail "The password must be 8 to 63 characters."
+		;;
+	wpa2)
+		[ -n "$identity" ] && [ -n "$password" ] || fail "Enter the username and password."
+		;;
+	esac
+
+	if [ -z "$sid" ]; then
+		n=1
+		while uci -q get "wireless.trm_uplink$n" >/dev/null; do n=$((n + 1)); done
+		sid="trm_uplink$n"
+		uci set "wireless.$sid=wifi-iface"
+	fi
+	uci set "wireless.$sid.device=$radio"
+	uci set "wireless.$sid.mode=sta"
+	uci set "wireless.$sid.network=trm_wwan"
+	uci set "wireless.$sid.ssid=$ssid"
+	uci set "wireless.$sid.encryption=$enc"
+	uci set "wireless.$sid.disabled=1"
+	[ "$keep" = 1 ] || {
+		uci -q delete "wireless.$sid.key"
+		uci -q delete "wireless.$sid.identity"
+		uci -q delete "wireless.$sid.password"
+		case "$enc" in
+		none|owe) ;;
+		wpa2)
+			uci set "wireless.$sid.eap_type=peap"
+			uci set "wireless.$sid.auth=MSCHAPV2"
+			uci set "wireless.$sid.identity=$identity"
+			uci set "wireless.$sid.password=$password"
+			;;
+		*)
+			uci set "wireless.$sid.key=$key"
+			;;
+		esac
+	}
+
+	n="$(trm_uplink_for "$ssid" | head -n1)"
+	if [ -z "$n" ]; then
+		n="$(uci add travelmate uplink)"
+		uci set "travelmate.$n.enabled=1"
+		uci set "travelmate.$n.ssid=$ssid"
+		uci set "travelmate.$n.bssid="
+	fi
+	# travelmate finds an uplink's options (login script, enabled) by radio and name,
+	# so a re-join on the other band moves the uplink with the station (2026-10-05)
+	uci set "travelmate.$n.device=$radio"
+
+	# The network chosen last is tried first. travelmate tries the radios in order,
+	# then the stations in /etc/config/wireless order, so with an older saved network
+	# in range a Join used to change nothing (found 2026-10-05). This station moves
+	# ahead of every other one, and its radio goes first (two radios: trm_revradio).
+	first="$(uci show wireless | sed -n "s/^wireless\.\([^.=]*\)\.mode='sta'$/\1/p" | head -n1)"
+	if [ -n "$first" ] && [ "$first" != "$sid" ]; then
+		pos="$(uci show wireless | sed -n 's/^wireless\.\([^.=]*\)=.*$/\1/p' | grep -n -x -F "$first" | cut -d: -f1)"
+		[ -n "$pos" ] && uci reorder "wireless.$sid=$((pos - 1))"
+	fi
+	case "$radio" in
+	radio0) uci set travelmate.global.trm_revradio=0 ;;
+	*) uci set travelmate.global.trm_revradio=1 ;;
+	esac
+	# A restart alone keeps a live connection: travelmate sees it up and stays, and a
+	# station moved to the other radio stays where it was until the Wi-Fi is reloaded
+	# (found 2026-10-05). So the chosen station is switched on and every other one off,
+	# and the Wi-Fi reloads once: wpa_supplicant connects to it directly, and travelmate,
+	# which keeps a live connection, adopts it. Leaving it off for travelmate to switch on
+	# meant a full search of the band and a second reload: 37 to 56 s, the phone dropping
+	# twice (2026-10-06). travelmate is stopped meanwhile: its procd triggers fire 5 s
+	# after the uplink drops, and when the station moves to the other radio the connect
+	# takes longer than that, so travelmate searched and reconnected on top of it (66 s,
+	# two connects, 2026-10-06). It starts again once the uplink is up, or after 40 s,
+	# keeps a live connection, and otherwise falls back in the new order.
+	for n in $(uci show wireless | sed -n "s/^wireless\.\([^.=]*\)\.mode='sta'$/\1/p"); do
+		uci set "wireless.$n.disabled=1"
+	done
+	uci set "wireless.$sid.disabled=0"
+	uci commit wireless
+	uci commit travelmate
+	(
+		/etc/init.d/travelmate stop
+		wifi reload
+		n=0
+		while [ $n -lt 40 ]; do
+			sleep 1; n=$((n + 1))
+			ubus list network.interface.trm_wwan >/dev/null 2>&1 || break	# no netifd: nothing to wait for
+			[ "$(ubus call network.interface.trm_wwan status 2>/dev/null | jsonfilter -q -e '@.up')" = true ] && break
+		done
+		/etc/init.d/travelmate start
+	) >/dev/null 2>&1 &
+	tlog "saved Wi-Fi uplink '$ssid' on $radio ($enc); connecting to it first"
+	ok
+}
+
+m_wifi_forget() {
+	local ssid sid
+	json_get_vars ssid
+	[ -n "$ssid" ] || fail "Choose a network."
+	for sid in $(wifi_sta_for "$ssid"); do uci delete "wireless.$sid"; done
+	for sid in $(trm_uplink_for "$ssid"); do uci delete "travelmate.$sid"; done
+	uci commit wireless
+	uci commit travelmate
+	/etc/init.d/travelmate restart >/dev/null 2>&1 &
+	ok
+}
+
+m_wifi_saved() {
+	local sid ssid radio band enabled
+	json_init
+	json_add_boolean ok 1
+	json_add_array networks
+	for sid in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)\.mode='sta'$/\1/p"); do
+		ssid="$(uci -q get "wireless.$sid.ssid")"
+		radio="$(uci -q get "wireless.$sid.device")"
+		band="$(uci -q get "wireless.$radio.band")"
+		enabled=1
+		for n in $(trm_uplink_for "$ssid"); do
+			[ "$(uci -q get "travelmate.$n.enabled")" = 0 ] && enabled=0
+		done
+		json_add_object
+		json_add_string ssid "$ssid"
+		json_add_string band "$band"
+		json_add_boolean enabled "$enabled"
+		json_close_object
+	done
+	json_close_array
+	json_dump
+}
+
+# ---- automatic login at a network's login page ------------------------------
+# The method is the travelmate login script an uplink runs when it finds a login
+# page there (/etc/travelmate/<method>.login), the code its script_args. Reading
+# the code needs the write permission (see the ACL): a view-only login sees no codes.
+LOGIN_METHODS="auto unifi-password unifi-user click-through"
+
+m_login_get() {
+	local ssid n script method=none args user
+	json_get_vars ssid
+	[ -n "$ssid" ] || fail "Choose a network."
+	n="$(trm_uplink_for "$ssid" | head -n1)"
+	[ -n "$n" ] || fail "That network is not saved."
+	script="$(uci -q get "travelmate.$n.script")"
+	case "$script" in /etc/travelmate/*.login) method="${script##*/}"; method="${method%.login}" ;; esac
+	json_init
+	json_add_boolean ok 1
+	json_add_string ssid "$ssid"
+	json_add_string method "$method"
+	args="$(uci -q get "travelmate.$n.script_args")"
+	if [ "$method" = unifi-user ] || [ "$method" = auto ]; then
+		user="${args%% *}"
+		[ "$user" = "-" ] && user=""
+		json_add_string user "$user"
+		case "$args" in *" "*) json_add_string code "${args#* }" ;; *) json_add_string code "" ;; esac
+	else
+		json_add_string code "$args"
+	fi
+	json_dump
+}
+
+m_login_set() {
+	local ssid method code user n
+	json_get_vars ssid method code user
+	[ -n "$ssid" ] || fail "Choose a network."
+	[ -n "$(trm_uplink_for "$ssid")" ] || fail "Save the network first, then set up its login."
+	case " none $LOGIN_METHODS " in *" ${method:-?} "*) ;; *) fail "Unknown login method." ;; esac
+	if [ "$method" != none ]; then
+		[ -x "/etc/travelmate/$method.login" ] || fail "That login method is not installed."
+	fi
+	[ "$method" = click-through ] && code=""	# an "I accept" page takes no code
+	[ "$method" = unifi-user ] && [ -z "$user" ] && fail "Enter the username from the login page."
+	if [ -n "$user" ] && { [ "$method" = unifi-user ] || [ "$method" = auto ]; }; then	# one word: script_args are "<user> <code>"
+		[ ${#user} -le 64 ] || fail "That username is too long."
+		[ "$user" = "-" ] && fail "Enter the username from the login page."	# "-" means none
+		case "$user" in *" "*|*"	"*|*"'"*|*'"'*|*'\'*|*"
+"*) fail "The username cannot contain spaces, quotes, backslashes or line breaks." ;; esac
+	fi
+	{ [ "$method" = unifi-password ] || [ "$method" = unifi-user ]; } && [ -z "$code" ] && fail "Enter the code from the login page."
+	if [ -n "$code" ] && [ "$method" != click-through ]; then
+		[ ${#code} -le 64 ] || fail "That code is too long."
+		case "$code" in *"'"*|*'"'*|*'\'*|*"
+"*) fail "The code cannot contain quotes, backslashes or line breaks." ;; esac
+	fi
+	for n in $(trm_uplink_for "$ssid"); do
+		if [ "$method" = none ]; then
+			uci -q delete "travelmate.$n.script"
+			uci -q delete "travelmate.$n.script_args"
+		else
+			uci set "travelmate.$n.script=/etc/travelmate/$method.login"
+			if [ "$method" = unifi-user ]; then
+				uci set "travelmate.$n.script_args=$user $code"
+			elif [ "$method" = auto ]; then	# "-" holds the place of no username
+				uci set "travelmate.$n.script_args=${user:--}${code:+ $code}"
+			elif [ -n "$code" ]; then
+				uci set "travelmate.$n.script_args=$code"
+			else
+				uci -q delete "travelmate.$n.script_args"
+			fi
+		fi
+	done
+	uci commit travelmate
+	tlog "automatic login for '$ssid': $method"
+	ok
+}
+
+m_set_ap() {
+	local ssid key country sid r
+	json_get_vars ssid key country
+	if [ -n "$ssid" ] && [ ${#ssid} -gt 32 ]; then fail "That name is too long."; fi
+	if [ -n "$key" ] && { [ ${#key} -lt 8 ] || [ ${#key} -gt 63 ]; }; then
+		fail "The password must be 8 to 63 characters."
+	fi
+	case "$country" in
+	""|auto) ;;
+	[A-Z][A-Z]) ;;
+	*) fail "Unknown country." ;;
+	esac
+	for sid in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)\.mode='ap'$/\1/p"); do
+		[ -n "$ssid" ] && uci set "wireless.$sid.ssid=$ssid"
+		[ -n "$key" ] || continue
+		uci set "wireless.$sid.key=$key"
+		case "$(uci -q get "wireless.$sid.encryption")" in
+		""|none|owe)
+			# A fresh OpenWrt: access points open and switched off. A password means WPA2/WPA3
+			# and on, never a key left unused on an open network. An access point that already
+			# has a password keeps its mode and its on/off choice.
+			uci set "wireless.$sid.encryption=sae-mixed"
+			uci -q delete "wireless.$sid.disabled"
+			r="$(uci -q get "wireless.$sid.device")"
+			[ -n "$r" ] && uci -q delete "wireless.$r.disabled"
+			;;
+		esac
+	done
+	if [ "$country" = auto ]; then
+		tset auto_country 1
+	elif [ -n "$country" ]; then
+		tset auto_country 0
+		for r in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
+			uci set "wireless.$r.country=$country"
+		done
+	fi
+	uci commit wireless
+	( sleep 2; wifi reload ) >/dev/null 2>&1 &
+	ok
+}
+
+m_set_channel() {
+	local band channel radio
+	json_get_vars band channel
+	radio="$(radio_for_band "$band")"
+	[ -n "$radio" ] || fail "No radio for that band."
+	case "$channel" in
+	auto) ;;
+	*[!0-9]*|"") fail "Unknown channel." ;;
+	esac
+	radio_locked "$radio" && fail "That band follows the Wi-Fi you're connected to, so its channel can't change right now."
+	uci set "wireless.$radio.channel=$channel"
+	uci commit wireless
+	( sleep 2; wifi reload ) >/dev/null 2>&1 &
+	ok
+}
+
+# the Wi-Fi uplink station's state as wpa_supplicant reports it (COMPLETED when associated), or nothing
+sta_state() {
+	local w
+
+	w="$(ubus list 'wpa_supplicant.*' 2>/dev/null | head -n1)"
+	[ -n "$w" ] && ubus call "$w" control '{"command":"STATUS"}' 2>/dev/null | sed -n 's/.*wpa_state=\([A-Z_]*\).*/\1/p'
+}
+
+m_mac() {
+	local target action mac st ssid sid dev sta radio
+	json_get_vars target action mac
+	case "$action" in
+	set) valid_mac "$mac" || fail "That isn't a MAC address." ;;
+	random)
+		mac="$(random_mac)"
+		mac_random_note "$mac"
+		;;
+	reset) mac="" ;;
+	*) fail "Unknown action." ;;
+	esac
+
+	case "$target" in
+	wifi)
+		st="$(jsonfilter -q -i /var/run/travelmate/travelmate.runtime.json -e '@.data.station_id')"
+		ssid="${st#*/}"
+		ssid="${ssid%/*}"
+		[ -n "$st" ] && [ "$ssid" != "-" ] || fail "Connect to a Wi-Fi network first."
+		sid="$(trm_uplink_for "$ssid" | head -n1)"
+		[ -n "$sid" ] || fail "That Wi-Fi isn't saved yet."
+		# one change at a time: a second one while the first is still reconnecting made two travelmate starts run
+		# at once (2026-10-12). A busy marker older than 2 minutes is left from a change that died: ignore it.
+		find "$TRAVEL_RUN/mac.busy" -maxdepth 0 -mmin +2 -exec rmdir {} \; 2>/dev/null
+		mkdir -p "$TRAVEL_RUN"
+		mkdir "$TRAVEL_RUN/mac.busy" 2>/dev/null || fail "The address is still changing. Try again in a minute."
+		if [ -n "$mac" ]; then uci set "travelmate.$sid.macaddr=$mac"; else uci -q delete "travelmate.$sid.macaddr"; fi
+		uci commit travelmate
+		# travelmate puts the address on the station only when it next connects, so a restart alone left the
+		# old one in use while the panel said "Now using" the new one (2026-10-08). Put it on the station now
+		# and reconnect that radio: the uplink (and the router's own Wi-Fi on that band) drops for a moment.
+		sta="$(wifi_sta_for "$ssid" | head -n1)"
+		radio=""
+		if [ -n "$sta" ]; then
+			if [ -n "$mac" ]; then uci set "wireless.$sta.macaddr=$mac"; else uci -q delete "wireless.$sta.macaddr"; fi
+			uci commit wireless
+			radio="$(uci -q get "wireless.$sta.device")"
+		fi
+		# One step after another, not at once: 'travelmate restart' and 'wifi reload' ran together, each
+		# re-applied the address and reloaded the radio, and travelmate took each drop for a lost uplink. On the
+		# router 2026-10-12: back to Original took five reconnects and about 3 minutes, Random four and 80 s.
+		# Now travelmate is stopped, the radio reloads once with the new address, the station is waited for, and
+		# travelmate starts again and finds the uplink already up. The wait is in two parts: the reload takes
+		# the station down a moment after 'wifi reload' returns, so "connected" seen at once is the old link
+		# (on the router the first version started travelmate in the same second and got a second reconnect).
+		( /etc/init.d/travelmate stop
+		  [ -n "$radio" ] && wifi reload "$radio"
+		  i=0; while [ "$i" -lt 10 ] && [ "$(sta_state)" = COMPLETED ]; do sleep 1; i=$((i + 1)); done
+		  i=0; while [ "$i" -lt 30 ] && [ "$(sta_state)" != COMPLETED ]; do sleep 1; i=$((i + 1)); done
+		  /etc/init.d/travelmate start
+		  rmdir "$TRAVEL_RUN/mac.busy" ) >/dev/null 2>&1 </dev/null &
+		;;
+	ethernet)
+		dev="$(uci -q show network | sed -n "s/^network\.\([^.=]*\)\.name='eth0'$/\1/p" | head -n1)"
+		if [ -z "$dev" ]; then
+			dev=wan_eth0
+			uci set "network.$dev=device"
+			uci set "network.$dev.name=eth0"
+		fi
+		if [ -n "$mac" ]; then uci set "network.$dev.macaddr=$mac"; else uci -q delete "network.$dev.macaddr"; fi
+		uci commit network
+		( ubus call network reload; ifup wan ) >/dev/null 2>&1 &
+		;;
+	*)
+		fail "Unknown target."
+		;;
+	esac
+	ok mac "$mac"
+}
+
+m_device_block() {
+	local mac blocked sid
+	json_get_vars mac blocked
+	valid_mac "$mac" || fail "That isn't a MAC address."
+	sid="travel_block_$(echo "$mac" | tr -d ':' | tr 'A-F' 'a-f')"
+	if [ "$blocked" = 1 ]; then
+		uci set "firewall.$sid=rule"
+		uci set "firewall.$sid.name=Travel panel: block $mac"
+		uci set "firewall.$sid.src=lan"
+		uci set "firewall.$sid.dest=*"
+		uci set "firewall.$sid.src_mac=$mac"
+		uci set "firewall.$sid.proto=all"
+		uci set "firewall.$sid.target=REJECT"
+	else
+		uci -q delete "firewall.$sid"
+	fi
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	ok
+}
+
+m_device_rename() {
+	local mac name sid
+	json_get_vars mac name
+	valid_mac "$mac" || fail "That isn't a MAC address."
+	# dnsmasq wants a hostname: letters, digits and dashes
+	name="$(echo "$name" | tr ' _' '--' | tr -cd 'A-Za-z0-9-' | cut -c1-40)"
+	[ -n "$name" ] || fail "Enter a name."
+	sid="$(uci -q show dhcp | sed -n "s/^dhcp\.\([^.=]*\)\.mac='\(.*\)'$/\1 \2/p" |
+		while read -r s m; do echo "$m" | grep -qi "$mac" && echo "$s"; done | head -n1)"
+	if [ -z "$sid" ]; then
+		sid="$(uci add dhcp host)"
+		uci set "dhcp.$sid.mac=$mac"
+	fi
+	uci set "dhcp.$sid.name=$name"
+	uci commit dhcp
+	/etc/init.d/dnsmasq reload >/dev/null 2>&1
+	ok
+}
+
+# What a device is (phone, laptop, ...), chosen in the panel when its guess from
+# the name is wrong. Kept in /etc/config/travel, one "device" section per MAC,
+# so it survives an upgrade and touches no service. An empty kind goes back to
+# the guess.
+m_device_kind() {
+	local mac kind sid
+	json_get_vars mac kind
+	valid_mac "$mac" || fail "That isn't a MAC address."
+	case "$kind" in
+		''|phone|tablet|reader|laptop|desktop|tv|speaker|watch|game|printer|camera|router) ;;
+		*) fail "Unknown device type." ;;
+	esac
+	mac="$(echo "$mac" | tr 'A-F' 'a-f')"
+	sid="$(uci -q show travel | sed -n "s/^travel\.\(@device\[[0-9]*\]\)\.mac='\(.*\)'$/\1 \2/p" |
+		while read -r s m; do [ "$m" = "$mac" ] && echo "$s"; done | head -n1)"
+	if [ -z "$kind" ]; then
+		[ -n "$sid" ] && uci delete "travel.$sid"
+	else
+		if [ -z "$sid" ]; then
+			sid="$(uci add travel device)"
+			uci set "travel.$sid.mac=$mac"
+		fi
+		uci set "travel.$sid.kind=$kind"
+	fi
+	uci commit travel
+	ok
+}
+
+m_tailscale_login() {
+	local url i host
+	# Tailscale must never manage the firewall here (see /etc/init.d/travel)
+	tailscale set --netfilter-mode=off --accept-dns=false >/dev/null 2>&1
+	[ "$(tsinfo state)" = Running ] && ok
+	host="$(uci -q get system.@system[0].hostname)"
+	# No --exit-node-allow-lan-access here: tailscale up refuses it without --exit-node ("can only be
+	# used with --exit-node") and exits before any login, so the panel waited for a link that never
+	# came (found on the router 2026-10-05). egress sets it together with the exit node instead.
+	( tailscale up --reset --json --timeout=300s --netfilter-mode=off --accept-dns=false \
+		--hostname="${host:-beryl7}" \
+		>"$TRAVEL_RUN/tailscale-login.json" 2>&1 & )
+	i=0
+	while [ "$i" -lt 10 ]; do
+		url="$(tailscale status --json 2>/dev/null | jsonfilter -q -e '@.AuthURL')"
+		[ -n "$url" ] && break
+		sleep 1
+		i=$((i + 1))
+	done
+	ok auth_url "$url"
+}
+
+m_tailscale_logout() {
+	tailscale set --exit-node= >/dev/null 2>&1
+	tailscale logout >/dev/null 2>&1
+	/usr/libexec/travel/egress apply >/dev/null 2>&1
+	ok
+}
+
+m_wg_import() {
+	local label conf name n parsed key val
+	local priv="" addrs="" dns="" mtu="" pub="" psk="" allowed="" endpoint="" keepalive=""
+	json_get_vars label conf
+	[ -n "$conf" ] || fail "Paste the WireGuard file first."
+	label="$(echo "${label:-VPN}" | tr -cd 'A-Za-z0-9 ._-' | cut -c1-32)"
+
+	# Flatten the .conf to "key value" lines. Only the first [Peer] counts:
+	# UniFi's and most providers' client files have exactly one.
+	parsed="$(printf '%s\n' "$conf" | tr -d '\r' | awk '
+		/^[ \t]*#/ { next }
+		/^[ \t]*\[Peer\]/ { peers++ }
+		peers > 1 { next }
+		index($0, "=") {
+			k = tolower(substr($0, 1, index($0, "=") - 1)); gsub(/[ \t]/, "", k)
+			v = substr($0, index($0, "=") + 1); gsub(/^[ \t]+|[ \t]+$/, "", v)
+			print k " " v
+		}')"
+
+	while read -r key val; do
+		case "$key" in
+		privatekey) priv="$val" ;;
+		address) addrs="$(echo "$val" | tr ',' ' ')" ;;
+		dns) dns="$(echo "$val" | tr ',' ' ')" ;;
+		mtu) mtu="$val" ;;
+		publickey) pub="$val" ;;
+		presharedkey) psk="$val" ;;
+		allowedips) allowed="$(echo "$val" | tr ',' ' ')" ;;
+		endpoint) endpoint="$val" ;;
+		persistentkeepalive) keepalive="$val" ;;
+		esac
+	done <<-EOF
+	$parsed
+	EOF
+
+	# Validate everything before writing a single option
+	b64='^[A-Za-z0-9+/]{42,43}=$'
+	echo "$priv" | grep -qE "$b64" || fail "That file doesn't look like a WireGuard profile (no private key)."
+	echo "$pub" | grep -qE "$b64" || fail "That file doesn't look like a WireGuard profile (no peer key)."
+	[ -z "$psk" ] || echo "$psk" | grep -qE "$b64" || fail "The preshared key in that file looks damaged."
+	[ -n "$addrs" ] || fail "The file has no Address line."
+	for a in $addrs $allowed $dns; do
+		echo "$a" | grep -qE '^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$' || fail "The file contains an address I can't read: $a"
+	done
+	case "$mtu" in ""|*[!0-9]*) mtu=1420 ;; esac
+	case "$keepalive" in ""|*[!0-9]*) keepalive=25 ;; esac
+	[ -n "$allowed" ] || allowed="0.0.0.0/0"
+
+	local host port
+	case "$endpoint" in
+	\[*\]:*) host="${endpoint#[}"; host="${host%%]*}"; port="${endpoint##*:}" ;;
+	*:*) host="${endpoint%:*}"; port="${endpoint##*:}" ;;
+	*) fail "The file has no Endpoint line." ;;
+	esac
+	echo "$host" | grep -qE '^[A-Za-z0-9.:-]+$' || fail "The endpoint address looks wrong."
+	case "$port" in ""|*[!0-9]*) fail "The endpoint port looks wrong." ;; esac
+
+	n=1
+	while uci -q get "network.wg_$n" >/dev/null; do n=$((n + 1)); done
+	name="wg_$n"
+
+	uci set "network.$name=interface"
+	uci set "network.$name.proto=wireguard"
+	uci set "network.$name.private_key=$priv"
+	for a in $addrs; do uci add_list "network.$name.addresses=$a"; done
+	uci set "network.$name.mtu=$mtu"
+	uci set "network.$name.metric=1"
+	uci set "network.$name.auto=0"
+	uci set "network.$name.travel_label=$label"
+	[ -n "$dns" ] && uci set "network.$name.travel_dns=$dns"
+
+	uci set "network.${name}_peer=wireguard_$name"
+	uci set "network.${name}_peer.public_key=$pub"
+	[ -n "$psk" ] && uci set "network.${name}_peer.preshared_key=$psk"
+	uci set "network.${name}_peer.endpoint_host=$host"
+	uci set "network.${name}_peer.endpoint_port=$port"
+	for a in $allowed; do uci add_list "network.${name}_peer.allowed_ips=$a"; done
+	uci set "network.${name}_peer.route_allowed_ips=1"
+	uci set "network.${name}_peer.persistent_keepalive=$keepalive"
+
+	for z in $(uci show firewall | sed -n "s/^firewall\.\([^.=]*\)\.name='vpn'$/\1/p"); do
+		uci add_list "firewall.$z.network=$name"
+	done
+	uci commit network
+	uci commit firewall
+	ubus call network reload >/dev/null 2>&1
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	tlog "imported WireGuard profile '$label' as $name ($host:$port)"
+	ok name "$name"
+}
+
+m_wg_delete() {
+	local name sid
+	json_get_vars name
+	[ -n "$name" ] && [ -n "$(uci -q get "network.$name.travel_label")" ] || fail "Unknown profile."
+	ifdown "$name" >/dev/null 2>&1
+	for sid in $(uci -q show network | sed -n "s/^network\.\([^.=]*\)=wireguard_$name$/\1/p"); do
+		uci delete "network.$sid"
+	done
+	uci delete "network.$name"
+	for z in $(uci show firewall | sed -n "s/^firewall\.\([^.=]*\)\.name='vpn'$/\1/p"); do
+		uci -q del_list "firewall.$z.network=$name"
+	done
+	uci commit network
+	uci commit firewall
+	if [ "$(tget wg)" = "$name" ]; then
+		tset wg ""
+		[ "$(tget mode)" = wireguard ] && tset mode direct
+	fi
+	ubus call network reload >/dev/null 2>&1
+	/usr/libexec/travel/egress apply >/dev/null 2>&1
+	ok
+}
+
+# The uplinks netifd has now, one per line: "<name> <live metric> <up> <default route mask>" ("-" when
+# unknown), for wan, trm_wwan and every phone or USB adapter (dynamic tether_* interfaces, as netifd lists
+# them and as the hotplug's phone files name them).
+uplinks_live() {
+	local n st mt up df
+	{
+		echo wan
+		echo trm_wwan
+		ubus list 'network.interface.tether_*' 2>/dev/null | sed 's/^network\.interface\.//'
+		ls "$TRAVEL_RUN" 2>/dev/null | sed -n 's/^phone\.//p' | tr -c 'a-zA-Z0-9_\n' '_' | sed 's/^/tether_/'
+	} | awk '!seen[$0]++' | while read -r n; do
+		st="$(ifstatus "$n" 2>/dev/null)"
+		mt="$(jsonfilter -q -s "$st" -e '@.metric')"
+		up="$(jsonfilter -q -s "$st" -e '@.up')"
+		df="$(jsonfilter -q -s "$st" -e "@.route[@.target='0.0.0.0'].mask" | head -n 1)"
+		printf '%s %s %s %s\n' "$n" "${mt:--}" "${up:-false}" "${df:--}"
+	done
+}
+
+# Save the order of the internet sources (the router uses the lowest metric with a way out). netifd
+# re-applies an interface whose metric changes: its address and routes go off and on, which drops every
+# connection through it (measured 2026-10-08). So the uplink carrying traffic keeps its number and the
+# others are numbered around it; traffic only moves when the order puts another available uplink first.
+# A phone is a dynamic interface that keeps the metric it was plugged in with: it is re-added.
+m_uplink_order() {
+	local keys k v names="" n=0 live active am="" ai=-1 i m step=10 w="" t
+	json_select order || fail "Send the order as a list."
+	json_get_keys keys
+	for k in $keys; do
+		json_get_var v "$k"
+		case "$v" in
+		wan|trm_wwan|tether) ;;
+		*) fail "Unknown internet source: $v" ;;
+		esac
+		case " $names " in *" $v "*) fail "$v is in the list twice." ;; esac
+		names="$names $v"
+		n=$((n + 1))
+	done
+	json_select ..
+	[ "$n" = 3 ] || fail "Send all three internet sources, in order."
+	live="$(uplinks_live)"
+	# the uplink carrying traffic: the lowest live metric among those up with a default route
+	active="$(echo "$live" | awk '$3 == "true" && $4 == "0" && $2 ~ /^[0-9]+$/ {print $2, $1}' | sort -n | head -n 1)"
+	if [ -n "$active" ]; then
+		am="${active%% *}"
+		active="${active#* }"
+		case "$active" in tether_*) active=tether ;; esac
+		i=0
+		for v in $names; do
+			[ "$v" = "$active" ] && ai=$i
+			i=$((i + 1))
+		done
+	fi
+	# room below the active one's number for the sources ordered above it? else number them 10, 20, 30
+	if [ "$ai" -gt 0 ]; then
+		if [ $((am - ai)) -ge 1 ]; then
+			[ $(((am - 1) / ai)) -lt 10 ] && step=$(((am - 1) / ai))
+		else
+			ai=-1
+		fi
+	fi
+	i=0
+	for v in $names; do
+		if [ "$ai" -lt 0 ]; then
+			m=$(((i + 1) * 10))
+		elif [ "$i" -lt "$ai" ]; then
+			m=$((am - (ai - i) * step))
+		else
+			m=$((am + (i - ai) * 10))
+		fi
+		case "$v" in
+		wan|trm_wwan)
+			if [ "$(uci -q get "network.$v.metric")" != "$m" ]; then
+				uci set "network.$v.metric=$m"
+				w=1
+			fi
+			;;
+		tether)
+			tset tether_metric "$m"
+			for t in $(echo "$live" | awk -v m="$m" '$1 ~ /^tether_/ && $2 != m {print $1}'); do
+				/usr/libexec/travel/tether-metric "$t" "$m" >/dev/null 2>&1
+			done
+			;;
+		esac
+		i=$((i + 1))
+	done
+	if [ -n "$w" ]; then
+		uci commit network
+		ubus call network reload >/dev/null 2>&1
+	fi
+	# a detour around a dead uplink (health.uc) was made for the old order: the new one decides now
+	ip -4 route flush proto 251 >/dev/null 2>&1
+	rm -f "$TRAVEL_RUN/failover"
+	ok
+}
+
+m_set_region() {
+	local region world_mode
+	json_get_vars region world_mode
+	case "$region" in
+	china) tset switch_on nikki ;;
+	world)
+		world_mode="${world_mode:-$(tget world_mode exitnode)}"
+		case "$world_mode" in exitnode|wireguard) ;; *) fail "Choose Tailscale exit or VPN." ;; esac
+		tset world_mode "$world_mode"
+		tset switch_on "$world_mode"
+		;;
+	*) fail "Choose China or rest of the world." ;;
+	esac
+	tset region "$region"
+	tset switch_off direct
+	# if the slider is on right now, the new meaning applies at once
+	/usr/libexec/travel/switch current >/dev/null 2>&1
+	ok
+}
+
+m_set_hide_router() {
+	local enabled
+	json_get_vars enabled
+	case "$enabled" in
+	0|1) ;;
+	*) fail "Send enabled as true or false." ;;
+	esac
+	tset hide_router "$enabled"
+	/usr/libexec/travel/ttl
+	ok
+}
+
+case "$1" in
+list)
+	list
+	;;
+call)
+	case "$2" in
+	status)
+		ucode /usr/libexec/travel/status.uc 2>/dev/null || fail "The status report failed."
+		;;
+	wifi_scan)
+		read -r input
+		json_load "$input"
+		json_get_vars band
+		ucode /usr/libexec/travel/scan.uc "${band:-all}" 2>/dev/null || fail "The Wi-Fi scan failed."
+		;;
+	wifi_saved)
+		m_wifi_saved
+		;;
+	set_mode|set_switch_map|wifi_join|wifi_forget|login_get|login_set|set_ap|set_channel|mac|device_block|device_rename|device_kind|wg_import|wg_delete|uplink_order|set_hide_router|set_region)
+		read -r input
+		json_load "$input"
+		"m_$2"
+		;;
+	tailscale_login|tailscale_logout)
+		"m_$2"
+		;;
+	*)
+		fail "Unknown method."
+		;;
+	esac
+	;;
+esac

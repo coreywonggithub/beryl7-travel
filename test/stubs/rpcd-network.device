@@ -1,0 +1,10 @@
+#!/usr/bin/ucode
+// Sandbox only: netifd's "network.device" object.
+import { serve, device_status, device_status_all } from 'sandbox';
+
+serve({
+	status: {
+		args: { name: 'str' },
+		call: (a) => a.name ? (device_status(a.name) ?? {}) : device_status_all()
+	}
+});

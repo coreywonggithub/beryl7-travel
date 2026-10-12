@@ -1,0 +1,8 @@
+#!/bin/sh
+# Beryl 7 mode slider (gpio-keys switch, BTN_0). Never block the hotplug
+# handler, and always exit 0: a non-zero exit re-fires the event as a timeout.
+[ "$TYPE" = switch ] || exit 0
+case "$ACTION" in
+pressed|released) /usr/libexec/travel/switch "$ACTION" >/dev/null 2>&1 & ;;
+esac
+exit 0

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Sandbox only: replaces /sbin/ip. The sandbox shares the build box's network
+# namespace, so the real "ip" would print the build box's routes and ARP table.
+# The six commands LuCI's Status > Routing page runs get the router's tables
+# (test/stubs/ip.uc); anything else is left to busybox.
+case "$*" in
+'-4 neigh show'|'-6 neigh show'|'-4 route show table all'|'-6 route show table all'|'-4 rule show'|'-6 rule show')
+	exec /usr/bin/ucode /usr/libexec/sandbox/ip.uc "$@"
+	;;
+esac
+exec /bin/busybox ip "$@"

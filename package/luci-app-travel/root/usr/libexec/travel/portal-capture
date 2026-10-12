@@ -1,0 +1,71 @@
+#!/bin/sh
+# Keep a copy of a Wi-Fi login page the router met, so an automatic login can be
+# written for it later from a real example (Corey, 2026-10-06: "save a copy of any
+# login page it doesn't recognise"). Started by the watcher, in the background, when
+# travelmate reports a new login page. Only the page is fetched, as a phone would
+# first see it: nothing is typed, ticked or sent to it.
+#
+#   portal-capture <portal host>
+#
+# Kept in /root/portal-pages (on flash, so it survives a restart), newest 10 copies,
+# one per network a day: <time>-<network>.html, .headers, and .meta (where the page
+# was, the network, its scripts' addresses, since many login pages are built by them).
+
+. /usr/libexec/travel/lib.sh
+
+DIR="${TRAVEL_PORTAL_DIR:-/root/portal-pages}"	# the two TRAVEL_ variables are test seams
+KEEP=10
+host="${1:-}"
+mkdir -p "$DIR"
+
+ssid="$(jsonfilter -q -i /var/run/travelmate/travelmate.runtime.json -e '@.data.station_id' | awk -F/ '{ print $2 }')"
+safe="$(printf '%s' "${ssid:-unknown}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-32)"
+
+# one copy per network a day: a hotel's page does not change between its 8-hour sessions
+for f in $(ls -t "$DIR"/*-"$safe".html 2>/dev/null | head -n 1); do
+	[ $(( $(date +%s) - $(date -r "$f" +%s) )) -lt 86400 ] && exit 0
+done
+
+dev="$(ubus call network.interface.trm_wwan status 2>/dev/null | jsonfilter -q -e '@.l3_device')"
+probe="${TRAVEL_PROBE:-$(uci -q get travelmate.global.trm_captiveurl)}"
+probe="${probe:-http://detectportal.firefox.com}"
+base="$DIR/$(date +%Y%m%d-%H%M%S)-$safe"
+
+# like a phone: follow the redirects to the page; -k because login pages often use a
+# certificate nothing can verify; at most 512 KB, through the Wi-Fi uplink only
+final="$(curl -s -k -L --max-time 20 --max-filesize 524288 ${dev:+--interface "$dev"} \
+	--user-agent 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36' \
+	--dump-header "$base.headers" --output "$base.html" \
+	--write-out '%{url_effective} %{http_code}' "$probe" 2>/dev/null)"
+
+if [ ! -s "$base.html" ]; then
+	rm -f "$base.html" "$base.headers"
+	exit 0
+fi
+# not sent to a login page: an automatic login (3 s for an "I accept" page) can finish
+# before this fetch, and what it got then is no login page. Keep nothing, so the one
+# copy a day is not spent on it (2026-10-06).
+case "${final% *}" in
+"${probe%/}"*)
+	rm -f "$base.html" "$base.headers"
+	exit 0
+	;;
+esac
+
+{
+	echo "network: ${ssid:-unknown}"
+	echo "portal host: $host"
+	echo "page: ${final% *}"
+	echo "http status: ${final##* }"
+	echo "saved: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+	echo "scripts:"
+	tr '\n' ' ' <"$base.html" | grep -o -i '<script[^>]*src=[^>]*>' | sed -E "s/.*src=[\"']?([^\"' >]+).*/  \1/" | head -n 20
+	printf 'forms: %s\n' "$(grep -o -i '<form' "$base.html" | wc -l)"
+} >"$base.meta"
+
+# keep the newest copies only
+ls -t "$DIR"/*.html 2>/dev/null | sed -n "$((KEEP + 1)),\$p" | while read -r f; do
+	rm -f "$f" "${f%.html}.headers" "${f%.html}.meta"
+done
+
+tlog "kept a copy of the login page of '${ssid:-unknown}' ($host) in $DIR"

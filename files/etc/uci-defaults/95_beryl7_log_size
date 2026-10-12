@@ -1,0 +1,12 @@
+#!/bin/sh
+# A bigger system log (2026-10-08). 128 KB held about 20 minutes: tailscaled wrote a line every 5 s about
+# an offline peer, so the minute the phone's backup route vanished had scrolled away before anyone looked.
+# Corey chose 10 MB the same day ("so we can see"): about a day even at that noisy rate (7 KB a minute,
+# measured), for 10 MB of RAM (2 % of 486 MB). The log lives in RAM on purpose: a log written to the NAND
+# all day wears the flash out. Raised, never lowered.
+cur="$(uci -q get system.@system[0].log_size)"
+if ! [ "${cur:-0}" -ge 10240 ] 2>/dev/null; then
+	uci set system.@system[0].log_size='10240'
+	uci commit system
+fi
+exit 0

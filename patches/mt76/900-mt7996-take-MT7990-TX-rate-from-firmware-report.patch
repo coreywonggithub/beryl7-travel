@@ -1,0 +1,247 @@
+From: Paul-Louis Charrière <plcharriere@gmail.com>
+Date: Sat, 26 Sep 2026 16:24:07 +0900
+Subject: [PATCH] wifi: mt76: mt7996: take MT7990 TX rate from firmware report
+
+mt7996 caches each station's TX rate in wcid->rate from TX status events
+and passes it to mac80211 with TX completions.  mac80211 uses it for the
+AQL airtime estimate and for the station's expected throughput.
+
+On MT7990 this cache cannot be kept correct from TX status.  Without WED,
+802.3 data frames that do not request a status have no host-written TX
+descriptor and never produce a TX status the driver uses.  The statuses
+that do arrive belong to driver-built frames, such as management, EAPOL or
+null frames, which are often sent at a fixed legacy rate.  One of them
+replaces the payload rate with OFDM 6 Mbit/s.  The firmware rate report
+that mt7996_mac_work() requests every 500 ms only updates the guard
+interval, so nothing restores the payload rate.
+
+On a GL-MT3600BE without WED this left a station at "tx bitrate: 6.0
+MBit/s" and "expected throughput: 5.242Mbps" while it was receiving at
+HE-MCS11 2x2 80 MHz.  AQL then limited forwarded downlink TCP to 74--115
+Mbit/s until the station reassociated.  With WED, the same kind of status
+was seen replacing the cached HE80 rate.
+
+MediaTek's driver takes TX rates from the firmware report instead of TX
+status.  The referenced rate-report work was authored by Benjamin Lin and
+Shayne Chen.  Do the same for MT7990: convert the full TX rate from the
+UNI_ALL_STA_TXRX_RATE report and stop TX status from overwriting it.  TX
+status statistics are unchanged, and MT7996 and MT7992 keep the current
+behaviour.
+
+Right after association, before any data frame has been sent, the
+firmware reports OFDM 6 Mbit/s.  For an HT or newer station, ignore that
+legacy placeholder only while the cached rate is unset.  Once a real rate
+has been cached, accept later legacy reports because they can represent a
+valid rate-control fallback.  An unknown firmware rate leaves the current
+cache unchanged.
+
+This replaces the previous rule, which ignored non-WED statuses only while
+WED was active.
+
+Link: https://github.com/openwrt/mt76/issues/1043
+Link: https://github.com/mediatek/mtk-openwrt-feeds/blob/f7eec2ff2e4fc8ded3439d7805c0aaa030ef9e07/autobuild/unified/filogic/mac80211/24.10/files/package/kernel/mt76/patches/0017-mtk-mt76-mt7996-update-TX-RX-rates-via-MCU-command.patch
+Link: https://github.com/mediatek/mtk-openwrt-feeds/blob/f7eec2ff2e4fc8ded3439d7805c0aaa030ef9e07/autobuild/unified/filogic/mac80211/25.12/files/package/kernel/mt76/patches/0044-mtk-mt76-rework-statistics-report-for-mt7996.patch
+[plcharriere: limit the change to MT7990, preserve the existing statistics,
+and ignore only the initial legacy-rate placeholder]
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Paul-Louis Charrière <plcharriere@gmail.com>
+--- a/mt76.h
++++ b/mt76.h
+@@ -346,6 +346,7 @@ enum mt76_phy_type {
+ 	MT_PHY_TYPE_EHT_TRIG,
+ 	MT_PHY_TYPE_EHT_MU,
+ 	__MT_PHY_TYPE_MAX,
++	MT_PHY_TYPE_UNKNOWN = 0xff,
+ };
+ 
+ struct mt76_sta_stats {
+--- a/mt7996/mac.c
++++ b/mt7996/mac.c
+@@ -1614,7 +1614,14 @@ mt7996_mac_add_txs_skb(struct mt7996_dev
+ 		stats->tx_bw[0]++;
+ 		break;
+ 	}
+-	wcid->rate = rate;
++
++	/* MT7990 takes the TX rate from the firmware rate report instead, see
++	 * mt7996_mcu_update_tx_rate().  Without WED its data frames produce no
++	 * TX status, so the status of a fixed-rate management frame would
++	 * otherwise replace the payload rate until the station reassociates.
++	 */
++	if (!is_mt7990(mdev))
++		wcid->rate = rate;
+ 
+ out:
+ 	if (skb)
+--- a/mt7996/mcu.c
++++ b/mt7996/mcu.c
+@@ -644,6 +644,154 @@ mt7996_mcu_update_tx_gi(struct rate_info
+ 	return 0;
+ }
+ 
++static bool
++mt7996_mcu_wcid_has_ht(struct mt76_wcid *wcid)
++{
++	struct ieee80211_link_sta *link_sta;
++	struct ieee80211_sta *sta;
++	bool ret = false;
++
++	sta = wcid_to_sta(wcid);
++	if (!sta)
++		return false;
++
++	rcu_read_lock();
++	link_sta = rcu_dereference(sta->link[wcid->link_id]);
++	if (link_sta)
++		ret = link_sta->ht_cap.ht_supported ||
++		      link_sta->vht_cap.vht_supported ||
++		      link_sta->he_cap.has_he ||
++		      link_sta->eht_cap.has_eht;
++	rcu_read_unlock();
++
++	return ret;
++}
++
++static int
++mt7996_mcu_update_tx_rate(struct mt7996_dev *dev, struct mt76_wcid *wcid,
++			  struct all_sta_trx_rate *mcu_rate)
++{
++	struct mt76_phy *mphy = mt76_dev_phy(&dev->mt76, wcid->phy_idx);
++	struct ieee80211_supported_band *sband;
++	struct rate_info rate = {};
++	u8 mode = mcu_rate->tx_mode;
++	u8 mcs = mcu_rate->tx_mcs;
++	u8 nss = mcu_rate->tx_nss;
++	u8 gi = mcu_rate->tx_gi;
++
++	if (mcu_rate->tx_stbc && nss > 1)
++		nss /= 2;
++
++	switch (mode) {
++	case MT_PHY_TYPE_CCK:
++	case MT_PHY_TYPE_OFDM:
++		/* Before the first data frame the firmware reports OFDM
++		 * 6 Mbit/s.  Ignore that placeholder while the cache is empty,
++		 * but preserve genuine legacy fallback rates reported later.
++		 */
++		if (mt7996_mcu_wcid_has_ht(wcid) && !wcid->rate.legacy &&
++		    !wcid->rate.flags)
++			return 0;
++
++		if (!mphy->chandef.chan)
++			return -EINVAL;
++
++		if (mphy->chandef.chan->band == NL80211_BAND_5GHZ) {
++			sband = &mphy->sband_5g.sband;
++		} else if (mphy->chandef.chan->band == NL80211_BAND_6GHZ) {
++			sband = &mphy->sband_6g.sband;
++		} else {
++			sband = &mphy->sband_2g.sband;
++			/* the 2.4 GHz rate table starts with four CCK rates */
++			if (mode == MT_PHY_TYPE_OFDM)
++				mcs += 4;
++		}
++
++		if (mcs >= sband->n_bitrates)
++			return -EINVAL;
++
++		rate.legacy = sband->bitrates[mcs].bitrate;
++		break;
++	case MT_PHY_TYPE_HT:
++	case MT_PHY_TYPE_HT_GF:
++		if (!nss || mcs > 7 || nss > 4)
++			return -EINVAL;
++
++		rate.mcs = mcs + (nss - 1) * 8;
++		rate.flags = RATE_INFO_FLAGS_MCS;
++		if (gi)
++			rate.flags |= RATE_INFO_FLAGS_SHORT_GI;
++		break;
++	case MT_PHY_TYPE_VHT:
++		if (!nss || mcs > 9)
++			return -EINVAL;
++
++		rate.mcs = mcs;
++		rate.nss = nss;
++		rate.flags = RATE_INFO_FLAGS_VHT_MCS;
++		if (gi)
++			rate.flags |= RATE_INFO_FLAGS_SHORT_GI;
++		break;
++	case MT_PHY_TYPE_HE_SU:
++	case MT_PHY_TYPE_HE_EXT_SU:
++	case MT_PHY_TYPE_HE_TB:
++	case MT_PHY_TYPE_HE_MU:
++		rate.mcs = mcs & GENMASK(3, 0);
++		if (!nss || rate.mcs > 13 || gi > NL80211_RATE_INFO_HE_GI_3_2)
++			return -EINVAL;
++
++		rate.nss = nss;
++		rate.flags = RATE_INFO_FLAGS_HE_MCS;
++		rate.he_gi = gi;
++		rate.he_dcm = !!(mcs & MT_PRXV_TX_DCM);
++		break;
++	case MT_PHY_TYPE_EHT_SU:
++	case MT_PHY_TYPE_EHT_TRIG:
++	case MT_PHY_TYPE_EHT_MU:
++		rate.mcs = mcs & GENMASK(3, 0);
++		if (!nss || gi > NL80211_RATE_INFO_EHT_GI_3_2)
++			return -EINVAL;
++
++		rate.nss = nss;
++		rate.flags = RATE_INFO_FLAGS_EHT_MCS;
++		rate.eht_gi = gi;
++		break;
++	case MT_PHY_TYPE_UNKNOWN:
++		return 0;
++	default:
++		return -EINVAL;
++	}
++
++	switch (mcu_rate->tx_bw) {
++	case IEEE80211_STA_RX_BW_20:
++		rate.bw = RATE_INFO_BW_20;
++		break;
++	case IEEE80211_STA_RX_BW_40:
++		rate.bw = RATE_INFO_BW_40;
++		break;
++	case IEEE80211_STA_RX_BW_80:
++		rate.bw = RATE_INFO_BW_80;
++		break;
++	case IEEE80211_STA_RX_BW_160:
++		rate.bw = RATE_INFO_BW_160;
++		break;
++	case IEEE80211_STA_RX_BW_320:
++		rate.bw = RATE_INFO_BW_320;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	if (mode == MT_PHY_TYPE_HE_EXT_SU && (mcs & MT_PRXV_TX_ER_SU_106T)) {
++		rate.bw = RATE_INFO_BW_HE_RU;
++		rate.he_ru_alloc = NL80211_RATE_INFO_HE_RU_ALLOC_106;
++	}
++
++	wcid->rate = rate;
++
++	return 0;
++}
++
+ static void
+ mt7996_mcu_rx_all_sta_info_event(struct mt7996_dev *dev, struct sk_buff *skb)
+ {
+@@ -667,6 +815,14 @@ mt7996_mcu_rx_all_sta_info_event(struct
+ 			if (!wcid)
+ 				break;
+ 
++			if (is_mt7990(&dev->mt76)) {
++				if (mt7996_mcu_update_tx_rate(dev, wcid,
++							      &res->rate[i]))
++					dev_err(dev->mt76.dev,
++						"Failed to update TX rate\n");
++				break;
++			}
++
+ 			if (mt7996_mcu_update_tx_gi(&wcid->rate, &res->rate[i]))
+ 				dev_err(dev->mt76.dev, "Failed to update TX GI\n");
+ 			break;

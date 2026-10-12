@@ -1,0 +1,28 @@
+#!/bin/sh
+# travelmate could not see past the access point's own 5 GHz channel block on this router (found on
+# the hardware 2026-10-05): mt76 runs both radios on one wiphy, and iwinfo cannot take a radio with an
+# active AP off its channel, so a 5 GHz-only uplink (the office's, on channel 157) never appeared and
+# travelmate never connected. This adds an ap-force scan of the radio's AP interface before travelmate
+# reads iwinfo's results; the panel's own scan (travel/scan.uc) does the same. It runs once at first
+# boot. An apk upgrade of travelmate replaces the file and needs this re-applied.
+# Registered in docs/hand-patches.md (what it fixes, upstream status, when to drop it);
+# build/check-hand-patches.sh tries it on every build's own sources and stops the build if it no
+# longer fits.
+F="${1:-/usr/lib/travelmate-functions.sh}"
+[ -f "$F" ] || exit 0
+grep -q -E "beryl7: ap-force scan|beryl7 hotfix 2026-10-05" "$F" && exit 0
+T="/tmp/trm-functions.$$"
+awk '
+/result="\$\("\$\{trm_ubuscmd\}" -S call iwinfo scan/ && !done {
+	print "\t# beryl7: ap-force scan. Both radios share one wiphy and iwinfo cannot take a radio with an"
+	print "\t# active AP off its channel; ask the radio s AP interface first, then read iwinfo."
+	print "\tlocal apif"
+	print "\tapif=\"$(\"${trm_ubuscmd}\" -S call network.wireless status 2>/dev/null | jsonfilter -q -e \"@[\\\"${radio}\\\"].interfaces[@.config.mode=\\\"ap\\\"].ifname\" | head -n1)\""
+	print "\t[ -n \"${apif}\" ] && iw dev \"${apif}\" scan ap-force >/dev/null 2>&1"
+	done = 1
+}
+{ print }
+' "$F" > "$T" && sh -n "$T" && [ "$(grep -c "beryl7: ap-force scan" "$T")" = 1 ] && cat "$T" > "$F"
+rm -f "$T"
+logger -t beryl7 "travelmate ap-force scan: $(grep -c "beryl7: ap-force scan" "$F") insertion(s)"
+exit 0

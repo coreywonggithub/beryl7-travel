@@ -1,0 +1,5 @@
+#!/bin/sh
+echo "$0 $*" >>/tmp/calls.log
+[ "$1" = running ] && [ "$(basename "$0")" = nikki ] && [ -e /tmp/nikki-running ] && exit 0
+[ "$1" = running ] && exit 1
+exit 0

@@ -1,0 +1,20 @@
+#!/usr/bin/ucode
+// Sandbox only: stands in for procd's "system" object, which LuCI's page
+// header asks for. The real router has procd; this sandbox does not.
+import { serve, system_info } from 'sandbox';
+
+serve({
+	board: {
+		call: () => ({
+			kernel: '6.12.108', hostname: 'beryl7', system: 'ARMv8 Processor rev 4',
+			model: 'GL.iNet GL-MT3600BE (sandbox)', board_name: 'glinet,gl-mt3600be', rootfs_type: 'squashfs',
+			release: {
+				distribution: 'OpenWrt', version: '25.12-SNAPSHOT', revision: 'r33249-7673104ad5',
+				target: 'mediatek/filogic', description: 'OpenWrt 25.12-SNAPSHOT r33249-7673104ad5'
+			}
+		})
+	},
+	info: { call: system_info },
+	reboot: { call: () => ({}) },
+	watchdog: { args: { frequency: 'int', timeout: 'int', stop: 'bool' }, call: () => ({}) }
+});

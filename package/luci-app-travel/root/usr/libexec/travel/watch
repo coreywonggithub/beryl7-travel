@@ -1,0 +1,62 @@
+#!/bin/sh
+# Runs as the travel service. Two jobs, both small:
+#  1. While travelmate reports a Wi-Fi login page ("net cp"), hold the tunnel
+#     off so the page can load; resume once travelmate says "net ok".
+#  2. Every 30 s, if the running way out isn't the wanted one (Tailscale came
+#     up late, an exit node came back online), try again.
+# travelmate does the actual detection, bound to the uplink connection itself.
+
+. /usr/libexec/travel/lib.sh
+
+RT=/var/run/travelmate/travelmate.runtime.json
+held_since=0
+calm=0
+tick=0
+
+while :; do
+	st="$(jsonfilter -q -i "$RT" -e '@.data.travelmate_status' 2>/dev/null)"
+	case "$st" in
+	*"net cp '"*)
+		calm=0
+		if [ ! -e "$TRAVEL_RUN/portal" ]; then
+			host="${st#*net cp \'}"
+			host="${host%%\'*}"
+			printf '%s\n%s\n' "$host" "$(date +%s)" >"$TRAVEL_RUN/portal"
+			tlog "Wi-Fi login page at $host: pausing the tunnel"
+			/usr/libexec/travel/egress apply
+			# a copy of the page, for writing a login for it later (background: never holds this loop)
+			( /usr/libexec/travel/portal-capture "$host" ) >/dev/null 2>&1 &
+		fi
+		;;
+	*"net ok"*)
+		if [ -e "$TRAVEL_RUN/portal" ]; then
+			rm -f "$TRAVEL_RUN/portal"
+			tlog "internet open again: resuming"
+			/usr/libexec/travel/egress apply
+		fi
+		;;
+	""|processing)
+		;;	# file being rewritten, or a cycle in progress: no news
+	*)
+		# not connected / net nok: release the hold after ~20 s, so a hold
+		# can never outlive the network that caused it
+		if [ -e "$TRAVEL_RUN/portal" ]; then
+			calm=$((calm + 1))
+			if [ "$calm" -ge 7 ]; then
+				rm -f "$TRAVEL_RUN/portal"
+				tlog "login page gone ($st): resuming"
+				/usr/libexec/travel/egress apply
+			fi
+		fi
+		;;
+	esac
+
+	tick=$((tick + 1))
+	if [ "$tick" -ge 10 ]; then
+		tick=0
+		want="$(tget mode direct)"
+		[ -e "$TRAVEL_RUN/portal" ] || [ "$want" = "$(cat "$TRAVEL_RUN/active" 2>/dev/null)" ] ||
+			/usr/libexec/travel/egress apply
+	fi
+	sleep 3
+done

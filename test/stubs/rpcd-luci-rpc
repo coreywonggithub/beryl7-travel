@@ -1,0 +1,32 @@
+#!/usr/bin/ucode
+// Sandbox only: replaces rpcd's C plugin "luci-rpc" (rpcd-mod-luci), which
+// reads /sys and the host's netlink and would describe the build box instead
+// of the router. Same methods, same shapes, from sandbox.uc.
+import { serve, luci_devices, wireless_status, iwinfo_info, leases, host_hints, board_json } from 'sandbox';
+
+const IW_RADIO_ONLY = [ 'quality', 'quality_max', 'bitrate', 'mode', 'ssid', 'bssid', 'encryption' ];
+
+function wireless_devices() {
+	let res = wireless_status();
+	for (let name, radio in res) {
+		let first = null;
+		for (let i in radio.interfaces) {
+			if (!i.ifname) continue;
+			i.iwinfo = iwinfo_info(i.ifname);
+			first ??= i.ifname;
+		}
+		let phy = { ...(iwinfo_info(first ?? name) ?? {}) };
+		for (let k in IW_RADIO_ONLY) delete phy[k];
+		radio.iwinfo = phy;
+	}
+	return res;
+}
+
+serve({
+	getNetworkDevices: { call: luci_devices },
+	getWirelessDevices: { call: wireless_devices },
+	getHostHints: { call: host_hints },
+	getDUIDHints: { call: () => ({}) },
+	getBoardJSON: { call: board_json },
+	getDHCPLeases: { call: () => ({ dhcp_leases: leases(), dhcp6_leases: [] }) }
+});

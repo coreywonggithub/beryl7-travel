@@ -1,0 +1,7 @@
+# Generated per build from the cred vault; never committed
+build/secrets/
+files/etc/uci-defaults/99_beryl7_secrets
+files/etc/dropbear/
+
+# macOS folder metadata
+.DS_Store

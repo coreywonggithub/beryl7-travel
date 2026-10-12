@@ -1,0 +1,15 @@
+Beryl theme for LuCI
+Copyright 2026 Corey Wong
+
+This theme is derived from luci-theme-bootstrap, part of LuCI
+(https://github.com/openwrt/luci), licensed under the Apache License 2.0:
+
+  Copyright 2008 Steven Barth <steven@midlink.org>
+  Copyright 2012 David Menting <david@nut-bolt.nl>
+  Copyright 2008-2022 Jo-Philipp Wich <jo@mein.io>
+
+Changes: new colour palette and type, restyled header, cards, forms, buttons,
+tables, tabs, messages and dialogs, and a fold-away phone menu.
+
+Licensed under the Apache License, Version 2.0. You may obtain a copy at
+http://www.apache.org/licenses/LICENSE-2.0

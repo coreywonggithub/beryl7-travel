@@ -1,0 +1,278 @@
+BSS 02:00:00:00:01:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2437.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -60.00 dBm
+	last seen: 70 ms ago
+	SSID: Hotel_Guest
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	Multiple BSSID:
+		 * SSID: Nested_Profile
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:01:02(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2462.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -50.00 dBm
+	last seen: 70 ms ago
+	SSID: Hotel_Guest
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:01:03(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5180.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -65.00 dBm
+	last seen: 70 ms ago
+	SSID: Hotel_Guest
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:02:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5500.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -55.00 dBm
+	last seen: 70 ms ago
+	SSID: Airbnb_Ehrenfeld
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:03:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5745.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -70.00 dBm
+	last seen: 70 ms ago
+	SSID: Cafe WPA3
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: SAE
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:04:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2412.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -40.00 dBm
+	last seen: 70 ms ago
+	SSID: Mixed Mode
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK SAE
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:05:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5260.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -75.00 dBm
+	last seen: 70 ms ago
+	SSID: Corp
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: IEEE 802.1X
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:06:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5200.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -68.00 dBm
+	last seen: 70 ms ago
+	SSID: OWE Net
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: OWE
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:07:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2422.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -80.00 dBm
+	last seen: 70 ms ago
+	SSID: Old Router
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	WPA:	 * Version: 1
+		 * Group cipher: TKIP
+		 * Pairwise ciphers: TKIP
+		 * Authentication suites: PSK
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:08:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2447.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -85.00 dBm
+	last seen: 70 ms ago
+	SSID: Ancient
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:09:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2437.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -58.00 dBm
+	last seen: 70 ms ago
+	SSID: \xe9\x85\x92\xe5\xba\x97WiFi
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:0a:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5240.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -62.00 dBm
+	last seen: 70 ms ago
+	SSID: \x20Lobby
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:0b:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2452.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -66.00 dBm
+	last seen: 70 ms ago
+	SSID: Back\x5cslash
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:0c:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2437.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -61.00 dBm
+	last seen: 70 ms ago
+	SSID: 
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:0d:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5180.0
+	beacon interval: 100 TUs
+	capability: ESS (0x0401)
+	signal: -63.00 dBm
+	last seen: 70 ms ago
+	SSID: \x00\x00\x00\x00
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:0e:01(on phy0.1-sta0)
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 2462.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -69.00 dBm
+	last seen: 70 ms ago
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6
+BSS 02:00:00:00:0f:01(on phy0.1-sta0) -- associated
+	last seen: 88941.887s [boottime]
+	TSF: 8219678315163 usec (95d, 03:14:38)
+	freq: 5745.0
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -45.00 dBm
+	last seen: 70 ms ago
+	SSID: Linked
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	HT operation:
+		 * primary channel: 1
+	BSS Load:
+		 * station count: 6

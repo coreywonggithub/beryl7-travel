@@ -1,0 +1,3 @@
+src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git^@NIKKI_PIN@
+src-link beryl7 @PROJ@/package
+src-link aquamarine @AQUA@

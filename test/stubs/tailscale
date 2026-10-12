@@ -1,0 +1,6 @@
+#!/bin/sh
+echo "tailscale $*" >>/tmp/calls.log
+case "$1" in
+status) cat /tmp/ts-status.json 2>/dev/null || echo '{"BackendState":"NeedsLogin","AuthURL":""}' ;;
+set|up|logout) exit "$(cat /tmp/ts-fail 2>/dev/null || echo 0)" ;;
+esac

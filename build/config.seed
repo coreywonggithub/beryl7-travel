@@ -1,0 +1,54 @@
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_mediatek_filogic_DEVICE_glinet_gl-mt3600be=y
+# Web UI
+CONFIG_PACKAGE_luci=y
+# Full wpad, so the hotel uplink can also join WPA3 and 802.1X networks
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+CONFIG_PACKAGE_wpad-mbedtls=y
+# Hotel Wi-Fi uplinks and captive portals
+CONFIG_PACKAGE_travelmate=y
+CONFIG_PACKAGE_luci-app-travelmate=y
+CONFIG_PACKAGE_curl=y
+# Tailscale and WireGuard (UniFi)
+CONFIG_PACKAGE_tailscale=y
+CONFIG_PACKAGE_kmod-wireguard=y
+CONFIG_PACKAGE_wireguard-tools=y
+CONFIG_PACKAGE_luci-proto-wireguard=y
+# nikki (off by default; for China trips)
+CONFIG_PACKAGE_nikki=y
+CONFIG_PACKAGE_luci-app-nikki=y
+CONFIG_PACKAGE_mihomo-meta=y
+# Phone tethering (Android, iPhone) and USB Ethernet adapters
+CONFIG_PACKAGE_kmod-usb-net-rndis=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ether=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ncm=y
+CONFIG_PACKAGE_kmod-usb-net-ipheth=y
+CONFIG_PACKAGE_usbmuxd=y
+CONFIG_PACKAGE_libimobiledevice-utils=y
+CONFIG_PACKAGE_kmod-usb-net-rtl8152=y
+CONFIG_PACKAGE_kmod-usb-net-asix-ax88179=y
+# Tools: EEE workaround on the WAN PHY, tests, file copy, debugging
+CONFIG_PACKAGE_ethtool=y
+CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_openssh-sftp-server=y
+CONFIG_PACKAGE_tcpdump-mini=y
+# Compressed swap in RAM: a safety net for memory spikes on this 512 MB board.
+# zstd only (packs tighter than lzo); files/etc/uci-defaults/70_beryl7_zram selects it.
+CONFIG_PACKAGE_zram-swap=y
+CONFIG_KERNEL_ZRAM_BACKEND_ZSTD=y
+CONFIG_KERNEL_ZRAM_DEF_COMP_ZSTD=y
+# SQM: cake on the uplink and, through ifb, on what comes back down (docs/sqm-design.md). Kernel
+# modules must come with the image: ones built later do not fit its kernel. Image v5 (2026-10-07).
+CONFIG_PACKAGE_kmod-sched-core=y
+CONFIG_PACKAGE_kmod-sched-cake=y
+CONFIG_PACKAGE_kmod-ifb=y
+CONFIG_PACKAGE_tc-tiny=y
+# Per-device usage (today / this month) for the panel's Devices card
+CONFIG_PACKAGE_luci-app-nlbwmon=y
+# The travel panel (this repo's package/luci-app-travel)
+CONFIG_PACKAGE_luci-app-travel=y
+# The Beryl LuCI theme (this repo's package/luci-theme-beryl); becomes the default on first boot
+CONFIG_PACKAGE_luci-theme-beryl=y
+# The Console look as its own theme package (2026-10-08, image v6)
+CONFIG_PACKAGE_luci-theme-aquamarine=y

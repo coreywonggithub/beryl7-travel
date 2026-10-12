@@ -1,0 +1,14 @@
+{
+	"admin/services/nikki/dashboard": {
+		"title": "Dashboard",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "travel/nikki-dashboard"
+		},
+		"depends": {
+			"acl": [ "luci-app-travel" ],
+			"uci": { "nikki": true }
+		}
+	}
+}

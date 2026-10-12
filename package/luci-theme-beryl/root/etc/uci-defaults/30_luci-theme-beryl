@@ -1,0 +1,30 @@
+#!/bin/sh
+# Register the Beryl theme (follows the device's light/dark setting) and make
+# it the default on a fresh install; an upgrade keeps whatever you picked. A
+# firmware upgrade that keeps settings runs this again without PKG_UPGRADE, so
+# a Beryl look already chosen (plain or Console) is left alone too, and so is
+# Aquamarine (luci-theme-aquamarine, the Console look as its own theme).
+
+changed=0
+set_opt() {
+	if ! uci -q get "luci.$1" >/dev/null; then
+		uci set "luci.$1=$2"
+		changed=1
+	fi
+}
+
+set_opt themes.Beryl /luci-static/beryl
+# the same theme with the console skin on top (skin-console.css)
+set_opt themes.BerylConsole /luci-static/beryl-console
+if [ "$PKG_UPGRADE" != 1 ]; then
+	case "$(uci -q get luci.main.mediaurlbase)" in
+	/luci-static/beryl | /luci-static/beryl-console | /luci-static/aquamarine*) ;;
+	*)
+		uci set luci.main.mediaurlbase=/luci-static/beryl
+		changed=1
+		;;
+	esac
+fi
+
+[ "$changed" = 1 ] && uci commit luci
+exit 0

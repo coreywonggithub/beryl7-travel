@@ -1,0 +1,23 @@
+#!/bin/sh
+# Beryl 7 build: hold a Wi-Fi uplink to the band of the radio it is saved on (found
+# on the hardware 2026-10-05). OpenWrt limits a station to its radio's channels only
+# through wpa_supplicant's global freq_list, which limits scanning. Both radios share
+# one wiphy, so the other band's scan results are in the station's list anyway (the
+# ap-force scans add them), and a station saved on the 2.4 GHz radio joined the same
+# network's 5 GHz access point and dragged the router's own 2.4 GHz Wi-Fi to 5 GHz.
+# freq_list inside the network block limits which access point may be chosen.
+#
+# Idempotent, first boot (also safe to run by hand): adds 'freq_list' to the network
+# variables supplicant.uc writes. An upgrade of the wifi scripts drops it; run again.
+# Registered in docs/hand-patches.md (what it fixes, upstream status, when to drop it);
+# build/check-hand-patches.sh tries it on every build's own sources and stops the build if it no
+# longer fits.
+
+f="${1:-/usr/share/ucode/wifi/supplicant.uc}"
+[ -f "$f" ] || exit 0
+grep -q 'beryl7: station held to its band' "$f" && exit 0
+anchor="'bssid_blacklist', 'bssid_whitelist', 'erp', 'eap', 'phase2',"
+[ "$(grep -c -F "$anchor" "$f")" = 1 ] || { logger -t beryl7 "station band fix: anchor not found, not applied"; exit 0; }
+sed -i "s|'bssid_blacklist', 'bssid_whitelist', 'erp', 'eap', 'phase2',|'bssid_blacklist', 'bssid_whitelist', 'erp', 'eap', 'phase2', 'freq_list', /* beryl7: station held to its band (2026-10-05) */|" "$f"
+grep -q 'beryl7: station held to its band' "$f" && logger -t beryl7 "station band fix applied"
+exit 0

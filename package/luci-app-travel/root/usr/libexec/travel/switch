@@ -1,0 +1,42 @@
+#!/bin/sh
+# The Beryl 7 mode slider. /etc/rc.button/BTN_0 calls this with
+# "pressed"/"released" when it moves; the travel service calls it with
+# "boot", because the position at power-on never arrives as an event.
+# Pressed = slid towards "ON" on GL's housing (verify on your unit).
+
+. /usr/libexec/travel/lib.sh
+
+# The GPIO level of the "mode" line, from debugfs: hi = pressed, lo = released
+level() {
+	awk '/\|mode/ { for (i = 1; i <= NF; i++) if ($i == "in" || $i == "out") { print $(i + 1); exit } }' \
+		/sys/kernel/debug/gpio 2>/dev/null
+}
+
+case "$1" in
+pressed) pos=on ;;
+released) pos=off ;;
+current)
+	pos="$(cat "$TRAVEL_RUN/switch" 2>/dev/null)"
+	case "$pos" in on|off) ;; *) exit 0 ;; esac
+	;;
+boot)
+	case "$(level)" in
+	hi) pos=on ;;
+	lo) pos=off ;;
+	*) exit 0 ;;
+	esac
+	;;
+*)
+	echo "usage: $0 pressed|released|boot|current" >&2
+	exit 1
+	;;
+esac
+
+printf '%s' "$pos" >"$TRAVEL_RUN/switch"
+[ "$(tget switch_enabled 1)" = 1 ] || exit 0
+
+mode="$(tget "switch_$pos")"
+valid_mode "$mode" || exit 0
+tset mode "$mode"
+tlog "switch $pos: $mode"
+exec /usr/libexec/travel/egress apply

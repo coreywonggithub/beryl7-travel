@@ -1,0 +1,8 @@
+#!/usr/bin/ucode
+// Sandbox only: netifd's "network.interface" object (LuCI asks for "dump"
+// on nearly every page). The state is in sandbox.uc.
+import { serve, netifd_dump } from 'sandbox';
+
+serve({
+	dump: { call: () => ({ interface: netifd_dump() }) }
+});

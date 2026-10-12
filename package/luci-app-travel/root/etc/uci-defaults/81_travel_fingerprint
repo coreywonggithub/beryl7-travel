@@ -1,0 +1,8 @@
+#!/bin/sh
+# dnsmasq calls DHCP hooks only for new leases unless told otherwise; phones and
+# laptops mostly renew the address they already have, so ask for renewals too.
+# /etc/dnsmasq.conf is read on every start (conf-file) and kept across upgrades.
+# Takes effect when dnsmasq next starts (first boot: before it starts).
+f=/etc/dnsmasq.conf
+grep -qx 'script-on-renewal' "$f" 2>/dev/null || echo 'script-on-renewal' >> "$f"
+exit 0

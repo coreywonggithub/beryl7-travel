@@ -1,0 +1,1622 @@
+/*
+ * Travel panel styles (luci-app-travel).
+ *
+ * Flat cards on a grey page, phone first, one column of at most 560 px.
+ * Every rule sits under .travel-panel so no LuCI theme is touched and no
+ * theme can restyle the panel. Colours are variables on .travel-panel.
+ * No fonts, images or addresses are fetched: the router may have no
+ * internet while this page is open. Only two font weights are used (400, 500).
+ * The @keyframes names carry a tp- prefix because keyframes cannot be scoped.
+ */
+
+/* ------------------------------------------------------------------ *
+ *  Tokens
+ * ------------------------------------------------------------------ */
+
+.travel-panel {
+	color-scheme: light;
+
+	--tp-page: #F5F4F0;
+	--tp-card: #FFFFFF;
+	--tp-field: #FFFFFF;
+	--tp-border: rgba(0, 0, 0, .12);
+	--tp-border-2: rgba(0, 0, 0, .28);
+	--tp-text: #1F1E1D;
+	--tp-text-2: #5F5E5A;
+	--tp-accent: #185FA5;
+	--tp-accent-bg: #E6F1FB;
+	--tp-on-accent: #FFFFFF;
+	--tp-ok-bg: #EAF3DE;
+	--tp-ok-text: #27500A;
+	--tp-warn-bg: #FAEEDA;
+	--tp-warn-text: #633806;
+	--tp-idle-bg: #F1EFE8;
+	--tp-idle-text: #5F5E5A;
+	--tp-danger-text: #A32D2D;
+	--tp-overlay: rgba(20, 20, 19, .45);
+}
+
+@media (prefers-color-scheme: dark) {
+	html:not([data-darkmode="false"]) .travel-panel {
+		color-scheme: dark;
+
+		--tp-page: #1C1C1B;
+		--tp-card: #262624;
+		--tp-field: #1C1C1B;
+		--tp-border: rgba(255, 255, 255, .12);
+		--tp-border-2: rgba(255, 255, 255, .3);
+		--tp-text: #F0EFEA;
+		--tp-text-2: #B4B2A9;
+		--tp-accent: #85B7EB;
+		--tp-accent-bg: #0C447C;
+		--tp-on-accent: #0A2540;
+		--tp-ok-bg: #27500A;
+		--tp-ok-text: #C0DD97;
+		--tp-warn-bg: #633806;
+		--tp-warn-text: #FAC775;
+		--tp-idle-bg: #333331;
+		--tp-idle-text: #B4B2A9;
+		--tp-danger-text: #F09595;
+		--tp-overlay: rgba(0, 0, 0, .6);
+	}
+}
+
+html[data-darkmode="true"] .travel-panel {
+	color-scheme: dark;
+
+	--tp-page: #1C1C1B;
+	--tp-card: #262624;
+	--tp-field: #1C1C1B;
+	--tp-border: rgba(255, 255, 255, .12);
+	--tp-border-2: rgba(255, 255, 255, .3);
+	--tp-text: #F0EFEA;
+	--tp-text-2: #B4B2A9;
+	--tp-accent: #85B7EB;
+	--tp-accent-bg: #0C447C;
+	--tp-on-accent: #0A2540;
+	--tp-ok-bg: #27500A;
+	--tp-ok-text: #C0DD97;
+	--tp-warn-bg: #633806;
+	--tp-warn-text: #FAC775;
+	--tp-idle-bg: #333331;
+	--tp-idle-text: #B4B2A9;
+	--tp-danger-text: #F09595;
+	--tp-overlay: rgba(0, 0, 0, .6);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Base
+ * ------------------------------------------------------------------ */
+
+.travel-panel {
+	display: block;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 12px;
+	border-radius: 12px;
+	background: var(--tp-page);
+	color: var(--tp-text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 15px;
+	font-weight: 400;
+	line-height: 1.4;
+	text-align: left;
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+.travel-panel *,
+.travel-panel *::before,
+.travel-panel *::after {
+	box-sizing: border-box;
+}
+
+.travel-panel [hidden] {
+	display: none !important;
+}
+
+/* Themes often style bare button, input and a elements. Some of those
+ * properties are inherited (word-break, letter-spacing), so reset them for
+ * everything inside the panel. */
+.travel-panel button,
+.travel-panel input,
+.travel-panel select,
+.travel-panel textarea,
+.travel-panel a {
+	letter-spacing: normal;
+	text-transform: none;
+	text-shadow: none;
+	word-break: normal;
+	font-style: normal;
+}
+
+.travel-panel :focus-visible {
+	outline: 2px solid var(--tp-accent);
+	outline-offset: 2px;
+}
+
+.travel-panel a:focus:not(:focus-visible),
+.travel-panel button:focus:not(:focus-visible) {
+	outline: 0;
+}
+
+.travel-panel .tp-vh {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+.travel-panel .tp-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-width: 560px;
+	margin: 0 auto;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Cards and text
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 0;
+	padding: 12px 14px;
+	border: .5px solid var(--tp-border);
+	border-radius: 12px;
+	background: var(--tp-card);
+	color: var(--tp-text);
+}
+
+.travel-panel .tp-card-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-height: 28px;
+}
+
+.travel-panel .tp-head-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+}
+
+.travel-panel .tp-title {
+	margin: 0;
+	padding: 0;
+	color: var(--tp-text);
+	font-size: 20px;
+	font-weight: 500;
+	line-height: 1.25;
+}
+
+.travel-panel .tp-h2 {
+	margin: 0;
+	padding: 0;
+	color: var(--tp-text);
+	font-size: 16px;
+	font-weight: 500;
+	line-height: 1.3;
+}
+
+.travel-panel .tp-h3 {
+	margin: 6px 0 0;
+	padding: 0;
+	color: var(--tp-text-2);
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.3;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.travel-panel .tp-text {
+	margin: 0;
+	padding: 0;
+	color: var(--tp-text);
+	font-size: 15px;
+	line-height: 1.4;
+}
+
+.travel-panel .tp-sub {
+	margin: 0;
+	padding: 0;
+	color: var(--tp-text-2);
+	font-size: 13.5px;
+	line-height: 1.4;
+}
+
+.travel-panel .tp-count {
+	white-space: nowrap;
+}
+
+.travel-panel .tp-empty {
+	margin: 0;
+	padding: 2px 0;
+	color: var(--tp-text-2);
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+.travel-panel .tp-empty .tp-text {
+	color: var(--tp-text-2);
+	font-size: 14px;
+}
+
+.travel-panel .tp-empty .tp-actions {
+	margin-top: 8px;
+}
+
+.travel-panel .tp-banner {
+	margin: 0;
+	padding: 10px 12px;
+	border: 0;
+	border-radius: 12px;
+	background: var(--tp-warn-bg);
+	color: var(--tp-warn-text);
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+.travel-panel .tp-note {
+	margin: 0;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: 8px;
+	font-size: 14px;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.travel-panel .tp-note.warn {
+	background: var(--tp-warn-bg);
+	color: var(--tp-warn-text);
+}
+
+.travel-panel .tp-note.ok {
+	background: var(--tp-ok-bg);
+	color: var(--tp-ok-text);
+}
+
+.travel-panel .tp-note.info {
+	background: var(--tp-idle-bg);
+	color: var(--tp-idle-text);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Pills
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-pill {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	margin: 0;
+	padding: 3px 10px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--tp-idle-bg);
+	color: var(--tp-idle-text);
+	font-size: 12.5px;
+	font-weight: 500;
+	line-height: 1.3;
+	white-space: nowrap;
+}
+
+.travel-panel .tp-pill.ok {
+	background: var(--tp-ok-bg);
+	color: var(--tp-ok-text);
+}
+
+.travel-panel .tp-pill.warn {
+	background: var(--tp-warn-bg);
+	color: var(--tp-warn-text);
+}
+
+.travel-panel .tp-pill.idle {
+	background: var(--tp-idle-bg);
+	color: var(--tp-idle-text);
+}
+
+.travel-panel .tp-head .tp-pill {
+	white-space: normal;
+}
+
+/* suggestion under the header (amber, like the other attention states) */
+
+.travel-panel .tp-suggest {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 0;
+	padding: 12px 14px;
+	border: 0;
+	border-radius: 12px;
+	background: var(--tp-warn-bg);
+	color: var(--tp-warn-text);
+}
+
+.travel-panel .tp-suggest-text {
+	margin: 0;
+	padding: 0;
+	color: inherit;
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+
+.travel-panel .tp-suggest-sub {
+	margin: 0;
+	padding: 0;
+	color: inherit;
+	font-size: 13px;
+	line-height: 1.4;
+	opacity: .85;
+}
+
+.travel-panel .tp-suggest .tp-actions {
+	margin-top: 2px;
+}
+
+.travel-panel .tp-suggest .tp-btn.quiet {
+	color: var(--tp-warn-text);
+}
+
+.travel-panel .tp-suggest .tp-btn.quiet:hover {
+	background: var(--tp-border);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Buttons
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-btn,
+.travel-panel a.tp-btn {
+	-webkit-appearance: none;
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: auto;
+	height: auto;
+	min-height: 44px;
+	margin: 0;
+	padding: 0 16px;
+	border: .5px solid var(--tp-border-2);
+	border-radius: 10px;
+	background: var(--tp-card);
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 15px !important;
+	font-weight: 500;
+	line-height: 1.2;
+	letter-spacing: normal;
+	text-align: center;
+	text-decoration: none;
+	text-shadow: none;
+	text-transform: none;
+	word-break: normal;
+	white-space: normal;
+	cursor: pointer;
+	float: none;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel a.tp-btn:hover,
+.travel-panel a.tp-btn:focus,
+.travel-panel a.tp-btn:active {
+	color: var(--tp-text);
+	text-decoration: none;
+}
+
+.travel-panel .tp-btn:hover {
+	background: var(--tp-idle-bg);
+}
+
+.travel-panel .tp-btn.primary,
+.travel-panel a.tp-btn.primary,
+.travel-panel a.tp-btn.primary:hover,
+.travel-panel a.tp-btn.primary:focus {
+	border-color: var(--tp-accent);
+	background: var(--tp-accent);
+	color: var(--tp-on-accent);
+}
+
+.travel-panel .tp-btn.primary:hover {
+	background: var(--tp-accent);
+	opacity: .92;
+}
+
+.travel-panel .tp-btn.quiet,
+.travel-panel a.tp-btn.quiet {
+	border-color: transparent;
+	background: transparent;
+	color: var(--tp-accent);
+}
+
+.travel-panel .tp-btn.quiet:hover {
+	background: var(--tp-accent-bg);
+}
+
+.travel-panel .tp-btn.danger,
+.travel-panel a.tp-btn.danger {
+	border-color: var(--tp-danger-text);
+	background: transparent;
+	color: var(--tp-danger-text);
+}
+
+.travel-panel .tp-btn.danger:hover {
+	background: var(--tp-warn-bg);
+}
+
+.travel-panel .tp-btn.sm {
+	min-height: 36px;
+	padding: 0 12px;
+	border-radius: 9px;
+	font-size: 14px !important;
+}
+
+.travel-panel .tp-btn.block {
+	display: flex;
+	width: 100%;
+}
+
+.travel-panel .tp-btn:disabled:not(.is-busy) {
+	opacity: .45;
+	cursor: not-allowed;
+}
+
+.travel-panel .tp-btn .tp-ico {
+	flex: none;
+}
+
+.travel-panel .tp-btn-label {
+	min-width: 0;
+}
+
+.travel-panel .tp-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+}
+
+.travel-panel .tp-actions.tp-two > * {
+	flex: 1 1 0;
+}
+
+.travel-panel .tp-icon-btn {
+	-webkit-appearance: none;
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 40px;
+	height: 40px;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 10px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--tp-text-2);
+	line-height: 1;
+	cursor: pointer;
+	font: inherit;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-icon-btn:hover {
+	background: var(--tp-idle-bg);
+}
+
+.travel-panel .tp-icon-btn:disabled:not(.is-busy) {
+	opacity: .3;
+	cursor: not-allowed;
+}
+
+.travel-panel .tp-ico {
+	display: block;
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.travel-panel svg.tp-signal {
+	fill: currentColor;
+	stroke: none;
+}
+
+/* busy state: content hidden, spinner in the middle, size unchanged */
+
+.travel-panel .is-busy {
+	position: relative;
+	cursor: progress;
+}
+
+.travel-panel .is-busy > * {
+	visibility: hidden;
+}
+
+.travel-panel .is-busy::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 16px;
+	height: 16px;
+	margin: -8px 0 0 -8px;
+	border: 2px solid currentColor;
+	border-right-color: transparent;
+	border-radius: 50%;
+	animation: tp-spin .7s linear infinite;
+}
+
+.travel-panel .tp-spin {
+	display: inline-block;
+	flex: none;
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--tp-border-2);
+	border-top-color: var(--tp-accent);
+	border-radius: 50%;
+	animation: tp-spin .8s linear infinite;
+}
+
+@keyframes tp-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* ------------------------------------------------------------------ *
+ *  Speed strip
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-speed-row {
+	display: flex;
+	align-items: flex-end;
+	flex-wrap: wrap;
+	gap: 4px 28px;
+}
+
+.travel-panel .tp-stat {
+	display: flex;
+	flex-direction: column;
+	flex: none;
+	gap: 0;
+}
+
+.travel-panel .tp-k {
+	color: var(--tp-text-2);
+	font-size: 13px;
+	line-height: 1.3;
+}
+
+.travel-panel .tp-stat-v {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
+	white-space: nowrap;
+}
+
+.travel-panel .tp-big {
+	color: var(--tp-text);
+	font-size: 26px;
+	font-weight: 500;
+	line-height: 1.15;
+	font-variant-numeric: tabular-nums;
+}
+
+.travel-panel .tp-unit {
+	color: var(--tp-text-2);
+	font-size: 12.5px;
+}
+
+.travel-panel .tp-spark-box {
+	width: 100%;
+	height: 44px;
+}
+
+.travel-panel .tp-spark {
+	display: block;
+	width: 100%;
+	height: 44px;
+	overflow: visible;
+}
+
+.travel-panel .tp-spark-base {
+	fill: none;
+	stroke: var(--tp-border-2);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+
+.travel-panel .tp-spark-area {
+	fill: var(--tp-accent-bg);
+	stroke: none;
+	opacity: .7;
+}
+
+.travel-panel .tp-spark-down {
+	fill: none;
+	stroke: var(--tp-accent);
+	stroke-width: 1.6;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
+}
+
+.travel-panel .tp-spark-up {
+	fill: none;
+	stroke: var(--tp-text-2);
+	stroke-width: 1.2;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
+	opacity: .8;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Segmented control and pickers
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-seg {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+}
+
+.travel-panel .tp-seg-btn {
+	-webkit-appearance: none;
+	appearance: none;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	width: auto;
+	min-height: 52px;
+	margin: 0;
+	padding: 8px 10px;
+	border: .5px solid var(--tp-border-2);
+	border-radius: 10px;
+	background: var(--tp-card);
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 15px !important;
+	font-weight: 500;
+	line-height: 1.2;
+	text-align: center;
+	text-transform: none;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-seg-btn:hover {
+	background: var(--tp-idle-bg);
+}
+
+.travel-panel .tp-seg-btn.is-on,
+.travel-panel .tp-seg-btn.is-on:hover {
+	border-color: var(--tp-accent);
+	background: var(--tp-accent-bg);
+	color: var(--tp-accent);
+}
+
+.travel-panel .tp-seg-btn:disabled:not(.is-busy) {
+	opacity: .45;
+	cursor: not-allowed;
+}
+
+.travel-panel .tp-seg-2 .tp-seg-btn {
+	min-height: 44px;
+}
+
+/* the login card's automatic-login line and its button (they sat flush, 2026-10-06) */
+.travel-panel .tp-auto {
+	margin-top: 14px;
+}
+
+.travel-panel .tp-auto .tp-actions {
+	margin-top: 8px;
+}
+
+.travel-panel .tp-seg-label {
+	display: block;
+}
+
+.travel-panel .tp-seg-note {
+	display: block;
+	min-height: 1.2em;
+	color: var(--tp-text-2);
+	font-size: 12px;
+	font-weight: 400;
+	line-height: 1.2;
+}
+
+.travel-panel .tp-seg-note.is-active {
+	color: var(--tp-ok-text);
+	font-weight: 500;
+}
+
+/* the device sheet's Type: icon buttons, four to a row */
+
+.travel-panel .tp-kinds {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+}
+
+.travel-panel .tp-kind-btn {
+	-webkit-appearance: none;
+	appearance: none;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	min-width: 0;
+	min-height: 62px;
+	margin: 0;
+	padding: 8px 4px;
+	border: .5px solid var(--tp-border-2);
+	border-radius: 10px;
+	background: var(--tp-card);
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 12.5px !important;
+	font-weight: 500;
+	line-height: 1.2;
+	text-align: center;
+	text-transform: none;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-kind-btn:hover {
+	background: var(--tp-idle-bg);
+}
+
+.travel-panel .tp-kind-btn.is-on,
+.travel-panel .tp-kind-btn.is-on:hover {
+	border-color: var(--tp-accent);
+	background: var(--tp-accent-bg);
+	color: var(--tp-accent);
+}
+
+.travel-panel .tp-kind-btn:disabled:not(.is-busy) {
+	opacity: .45;
+	cursor: not-allowed;
+}
+
+.travel-panel .tp-kind-label {
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 359px) {
+	.travel-panel .tp-kinds {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+.travel-panel .tp-picker {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-top: 2px;
+}
+
+.travel-panel .tp-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+}
+
+.travel-panel .tp-list > * + * {
+	border-top: .5px solid var(--tp-border);
+}
+
+.travel-panel .tp-choice {
+	-webkit-appearance: none;
+	appearance: none;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-height: 56px;
+	margin: 0;
+	padding: 8px 2px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 15px !important;
+	font-weight: 400;
+	line-height: 1.3;
+	text-align: left;
+	text-transform: none;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-choice:hover {
+	background: transparent;
+}
+
+.travel-panel .tp-choice.is-offline {
+	opacity: .55;
+}
+
+.travel-panel .tp-choice:disabled:not(.is-busy) {
+	cursor: not-allowed;
+}
+
+.travel-panel .tp-choice-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.travel-panel .tp-radio {
+	position: relative;
+	flex: none;
+	width: 20px;
+	height: 20px;
+	border: 1.5px solid var(--tp-border-2);
+	border-radius: 50%;
+}
+
+.travel-panel .tp-choice[aria-checked="true"] .tp-radio {
+	border-color: var(--tp-accent);
+}
+
+.travel-panel .tp-choice[aria-checked="true"] .tp-radio::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	right: 3px;
+	bottom: 3px;
+	left: 3px;
+	border-radius: 50%;
+	background: var(--tp-accent);
+}
+
+.travel-panel .tp-chev-r {
+	color: var(--tp-text-2);
+}
+
+/* mode switch card: the text lines and options for the selected region */
+
+.travel-panel .tp-mode-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding-top: 2px;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Rows (internet sources, devices, profiles)
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 56px;
+	margin: 0;
+	padding: 8px 0;
+}
+
+.travel-panel .tp-row-wrap {
+	flex-wrap: wrap;
+}
+
+.travel-panel .tp-row-icon,
+.travel-panel .tp-avatar {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	background: var(--tp-idle-bg);
+	color: var(--tp-text-2);
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1;
+}
+
+.travel-panel .tp-avatar {
+	background: var(--tp-accent-bg);
+	color: var(--tp-accent);
+}
+
+.travel-panel .tp-row.is-away .tp-avatar {
+	background: var(--tp-idle-bg);
+	color: var(--tp-text-2);
+}
+
+.travel-panel .tp-row.is-away .tp-row-title {
+	color: var(--tp-text-2);
+}
+
+.travel-panel .tp-row.is-blocked .tp-avatar {
+	background: var(--tp-warn-bg);
+	color: var(--tp-warn-text);
+}
+
+.travel-panel .tp-row-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.travel-panel .tp-row-line {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+}
+
+.travel-panel .tp-row-title {
+	color: var(--tp-text);
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+.travel-panel .tp-row-sub {
+	color: var(--tp-text-2);
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+
+.travel-panel .tp-row-main {
+	-webkit-appearance: none;
+	appearance: none;
+	display: flex;
+	align-items: center;
+	flex: 1;
+	gap: 12px;
+	min-width: 0;
+	min-height: 44px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 15px !important;
+	font-weight: 400;
+	line-height: 1.3;
+	text-align: left;
+	text-transform: none;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-arrows {
+	display: flex;
+	flex: none;
+	gap: 2px;
+}
+
+/* the drag handle of an internet source (2026-10-08): the browser must not scroll while a finger drags it */
+.travel-panel .tp-grip {
+	cursor: grab;
+	touch-action: none;
+}
+
+.travel-panel .tp-grip:active {
+	cursor: grabbing;
+}
+
+.travel-panel .tp-row.is-dragging {
+	background: var(--tp-accent-bg);
+	border-radius: 10px;
+	box-shadow: 0 0 0 1px var(--tp-accent);
+}
+
+.travel-panel .tp-order-note {
+	margin-top: 8px;
+}
+
+.travel-panel .tp-confirm-inline {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 6px 8px;
+	width: 100%;
+}
+
+.travel-panel .tp-confirm {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	border: .5px solid var(--tp-border-2);
+	border-radius: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Forms
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.travel-panel .tp-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	font: inherit;
+}
+
+.travel-panel .tp-label {
+	color: var(--tp-text-2);
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 1.3;
+}
+
+.travel-panel .tp-hint {
+	color: var(--tp-text-2);
+	font-size: 12.5px;
+	line-height: 1.3;
+}
+
+.travel-panel .tp-input,
+.travel-panel .tp-select,
+.travel-panel .tp-textarea {
+	display: block;
+	width: 100%;
+	height: auto;
+	min-height: 44px !important;
+	margin: 0;
+	padding: 8px 12px !important;
+	border: .5px solid var(--tp-border-2);
+	border-radius: 10px;
+	background: var(--tp-field);
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 16px;
+	font-weight: 400;
+	line-height: 1.3;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+.travel-panel .tp-input::placeholder,
+.travel-panel .tp-textarea::placeholder {
+	color: var(--tp-text-2);
+	opacity: .75;
+}
+
+.travel-panel .tp-input[readonly] {
+	background: var(--tp-idle-bg);
+	color: var(--tp-text-2);
+}
+
+.travel-panel .tp-input:focus,
+.travel-panel .tp-select:focus,
+.travel-panel .tp-textarea:focus {
+	border-color: var(--tp-accent);
+}
+
+.travel-panel .tp-select {
+	width: auto;
+	max-width: 100%;
+	padding-right: 8px;
+	cursor: pointer;
+}
+
+.travel-panel .tp-form .tp-select,
+.travel-panel .tp-field .tp-select {
+	width: 100%;
+}
+
+.travel-panel .tp-textarea {
+	min-height: 150px !important;
+	overflow: auto;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+	font-size: 16px;	/* iOS zooms into anything smaller when it is tapped */
+	line-height: 1.45;
+	white-space: pre;
+	resize: vertical;
+}
+
+.travel-panel .tp-input-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.travel-panel .tp-input-row .tp-input {
+	flex: 1;
+	min-width: 0;
+}
+
+/* key / value lines */
+
+.travel-panel .tp-kv {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px 12px;
+	min-height: 32px;
+	margin: 0;
+	padding: 0;
+}
+
+.travel-panel .tp-kv-k {
+	color: var(--tp-text-2);
+	font-size: 14px;
+}
+
+.travel-panel .tp-kv-v {
+	color: var(--tp-text);
+	font-size: 15px;
+	font-weight: 500;
+	text-align: right;
+	overflow-wrap: anywhere;
+}
+
+.travel-panel .tp-facts {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+/* your Wi-Fi card */
+
+.travel-panel .tp-chans,
+.travel-panel .tp-country {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-top: 10px;
+	border-top: .5px solid var(--tp-border);
+}
+
+.travel-panel .tp-chan {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.travel-panel .tp-chan .tp-kv,
+.travel-panel .tp-country .tp-kv {
+	flex-wrap: wrap;
+}
+
+.travel-panel .tp-chan-ctl {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.travel-panel .tp-chan-ctl .tp-select {
+	width: auto;
+	min-width: 132px;
+}
+
+.travel-panel .tp-locked {
+	display: inline-flex;
+	align-items: flex-start;
+	gap: 6px;
+	color: var(--tp-text-2);
+	font-size: 13.5px;
+	line-height: 1.4;
+	text-align: left;
+}
+
+.travel-panel .tp-locked .tp-ico {
+	margin-top: 1px;
+}
+
+/* ------------------------------------------------------------------ *
+ *  More: expanding rows
+ * ------------------------------------------------------------------ */
+
+/* the "Look like one device" switch, first row of More */
+
+.travel-panel .tp-toggle {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px 14px;
+	border-top: .5px solid var(--tp-border);
+}
+
+.travel-panel .tp-toggle-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 14px;
+}
+
+.travel-panel .tp-toggle-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.travel-panel .tp-switch-ctl {
+	-webkit-appearance: none;
+	appearance: none;
+	position: relative;
+	flex: none;
+	width: 52px;
+	height: 32px;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: .5px solid var(--tp-border-2);
+	border-radius: 16px;
+	background: var(--tp-idle-bg);
+	box-shadow: none;
+	color: var(--tp-text-2);
+	cursor: pointer;
+	font: inherit;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-switch-ctl.is-on {
+	border-color: var(--tp-accent);
+	background: var(--tp-accent);
+	color: var(--tp-on-accent);
+}
+
+.travel-panel .tp-switch-thumb {
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background: var(--tp-card);
+	transition: transform .15s ease;
+}
+
+.travel-panel .tp-switch-ctl:not(.is-on) .tp-switch-thumb {
+	background: var(--tp-text-2);
+}
+
+.travel-panel .tp-switch-ctl.is-on .tp-switch-thumb {
+	transform: translateX(20px);
+	background: var(--tp-on-accent);
+}
+
+.travel-panel .tp-switch-ctl:disabled:not(.is-busy) {
+	opacity: .45;
+	cursor: not-allowed;
+}
+
+.travel-panel .tp-more {
+	gap: 4px;
+	padding-bottom: 0;
+	overflow: hidden;
+}
+
+.travel-panel .tp-acc-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0 -14px;
+}
+
+.travel-panel .tp-acc {
+	border-top: .5px solid var(--tp-border);
+}
+
+.travel-panel .tp-acc-head,
+.travel-panel a.tp-acc-link {
+	-webkit-appearance: none;
+	appearance: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	min-height: 52px;
+	margin: 0;
+	padding: 10px 14px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 15px !important;
+	font-weight: 500;
+	line-height: 1.3;
+	text-align: left;
+	text-decoration: none;
+	text-transform: none;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel a.tp-acc-link {
+	border-top: .5px solid var(--tp-border);
+}
+
+.travel-panel a.tp-acc-link:hover,
+.travel-panel a.tp-acc-link:focus {
+	color: var(--tp-text);
+	text-decoration: none;
+}
+
+.travel-panel .tp-acc-head:hover,
+.travel-panel a.tp-acc-link:hover {
+	background: var(--tp-idle-bg);
+}
+
+.travel-panel .tp-acc-title {
+	flex: 1;
+	min-width: 0;
+	font-weight: 500;
+}
+
+.travel-panel .tp-acc-sum {
+	flex: none;
+	max-width: 45%;
+	color: var(--tp-text-2);
+	font-size: 13px;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+	text-align: right;
+}
+
+.travel-panel .tp-acc-head .tp-pill {
+	font-size: 12px;
+}
+
+.travel-panel .tp-chev {
+	flex: none;
+	color: var(--tp-text-2);
+	transition: transform .15s ease;
+}
+
+.travel-panel .tp-acc.is-open .tp-chev {
+	transform: rotate(180deg);
+}
+
+.travel-panel .tp-acc-body {
+	padding: 2px 14px 14px;
+}
+
+.travel-panel .tp-acc-inner {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Sheets (Wi-Fi chooser, device)
+ * ------------------------------------------------------------------ */
+
+.travel-panel .tp-overlay {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 850;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	background: var(--tp-overlay);
+	animation: tp-fade .15s ease-out;
+}
+
+.travel-panel .tp-sheet {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 560px;
+	max-height: 92vh;
+	max-height: 92dvh;
+	border-radius: 16px 16px 0 0;
+	background: var(--tp-card);
+	color: var(--tp-text);
+	outline: 0;
+	overscroll-behavior: contain;
+	animation: tp-rise .2s ease-out;
+}
+
+.travel-panel .tp-sheet-head {
+	display: flex;
+	align-items: center;
+	flex: none;
+	gap: 6px;
+	padding: 10px 8px 8px 14px;
+	border-bottom: .5px solid var(--tp-border);
+}
+
+.travel-panel .tp-sheet-title {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	color: var(--tp-text);
+	font-size: 17px;
+	font-weight: 500;
+	line-height: 1.3;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.travel-panel .tp-sheet-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.travel-panel .tp-sheet-body {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 12px 14px 20px;
+	padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+}
+
+.travel-panel .tp-net {
+	-webkit-appearance: none;
+	appearance: none;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-height: 56px;
+	margin: 0;
+	padding: 8px 2px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--tp-text);
+	font-family: inherit;
+	font-size: 15px !important;
+	font-weight: 400;
+	line-height: 1.3;
+	text-align: left;
+	text-transform: none;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.travel-panel .tp-net:hover {
+	background: var(--tp-idle-bg);
+}
+
+.travel-panel .tp-signal {
+	color: var(--tp-accent);
+}
+
+.travel-panel .tp-net-lock {
+	color: var(--tp-text-2);
+}
+
+.travel-panel .tp-scanline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.travel-panel .tp-saved {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.travel-panel .tp-result {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.travel-panel .tp-progress {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px 10px;
+}
+
+@keyframes tp-fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes tp-rise {
+	from { transform: translateY(24px); opacity: .6; }
+	to { transform: translateY(0); opacity: 1; }
+}
+
+@media (min-width: 600px) {
+	.travel-panel {
+		padding: 20px 16px;
+	}
+
+	.travel-panel .tp-textarea {
+		font-size: 13px;
+	}
+
+	.travel-panel .tp-overlay {
+		align-items: center;
+		padding: 24px;
+	}
+
+	.travel-panel .tp-sheet {
+		max-height: 88vh;
+		max-height: 88dvh;
+		border-radius: 16px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.travel-panel .is-busy::after,
+	.travel-panel .tp-spin {
+		animation: none;
+	}
+
+	.travel-panel .tp-overlay,
+	.travel-panel .tp-sheet {
+		animation: none;
+	}
+
+	.travel-panel .tp-chev,
+	.travel-panel .tp-switch-thumb {
+		transition: none;
+	}
+}

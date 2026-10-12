@@ -1,0 +1,8 @@
+#!/bin/sh
+# Beryl 7 WAN port (eth0, RTL8221B PHY): Energy-Efficient Ethernet causes
+# 47-60% packet loss on kernel 6.12 (openwrt/openwrt#20967, #24656).
+# Turn it off whenever the port appears. Remove once those are fixed.
+[ "$ACTION" = add ] && [ "${DEVICENAME:-$INTERFACE}" = eth0 ] || exit 0
+ethtool --set-eee eth0 eee off tx-lpi off 2>/dev/null ||
+	ethtool --set-eee eth0 eee off 2>/dev/null
+exit 0

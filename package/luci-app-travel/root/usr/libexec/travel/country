@@ -1,0 +1,43 @@
+#!/bin/sh
+# Wi-Fi country rules from what the access point we just joined announces
+# (its beacon carries a country code). Falls back to the most common code
+# among nearby access points. Runs when the Wi-Fi uplink comes up. Changing
+# the country restarts Wi-Fi for ~10 s, so it only happens when it's new.
+
+. /lib/functions/network.sh
+. /usr/libexec/travel/lib.sh
+
+[ "$(tget auto_country 1)" = 1 ] || exit 0
+sleep 5
+network_get_device dev trm_wwan || exit 0
+
+cc="$(iw dev "$dev" scan dump 2>/dev/null | awk '
+	/^BSS / { assoc = ($0 ~ /associated/) }
+	$1 == "Country:" {
+		if (assoc) { print $2; found = 1; exit }
+		n[$2]++
+	}
+	END {
+		if (!found) {
+			best = ""
+			for (k in n) if (n[k] > n[best]) best = k
+			if (best != "") print best
+		}
+	}')"
+
+case "$cc" in
+[A-Z][A-Z]) ;;
+*) exit 0 ;;
+esac
+[ "$cc" = XX ] && exit 0
+
+printf '%s\n%s\n' "$cc" "nearby Wi-Fi" >"$TRAVEL_RUN/country"
+cur="$(uci -q get wireless.radio0.country)"
+[ "$cc" = "$cur" ] && exit 0
+
+for r in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
+	uci set "wireless.$r.country=$cc"
+done
+uci commit wireless
+tlog "Wi-Fi country rules: $cur -> $cc (announced by the access point)"
+wifi reload

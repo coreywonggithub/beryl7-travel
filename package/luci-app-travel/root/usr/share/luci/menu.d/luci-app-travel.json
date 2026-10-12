@@ -1,0 +1,13 @@
+{
+	"admin/travel": {
+		"title": "Travel",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "travel/panel"
+		},
+		"depends": {
+			"acl": [ "luci-app-travel" ]
+		}
+	}
+}

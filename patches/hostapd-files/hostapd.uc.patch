@@ -1,0 +1,58 @@
+From: beryl7-travel (backports of openwrt main a75b4c4 and f3371c7, Felix Fietkau, 2026-10-08)
+Subject: hostapd.uc: continue a pending interface setup from the event loop; abort it when its config is removed
+
+Our pinned hostapd.uc (openwrt-25.12 at 7673104) predates both. a75b4c4 moves the next step of a pending
+setup out of the ubus defer callback into a zero-delay uloop timer: libubus can run that callback inside a
+synchronous ubus call made during another interface's teardown, which re-added an interface half-way
+through the teardown, failed, and crashed hostapd in hostapd_wpa_event(). f3371c7 aborts a pending setup
+in iface_config_remove() too. Our file lacks the uloop import upstream gained earlier: added, since the
+timer needs it (without it the callback throws).
+
+--- a/package/network/services/hostapd/files/hostapd.uc
++++ b/package/network/services/hostapd/files/hostapd.uc
+@@ -1,4 +1,5 @@
+ let libubus = require("ubus");
++import * as uloop from "uloop";
+ import { open, readfile, access } from "fs";
+ import { wdev_remove, is_equal, vlist_new, phy_is_fullmac, phy_open, wdev_set_radio_mask, wdev_set_up } from "common";
+ 
+@@ -193,6 +194,9 @@
+ 	if (pending.defer)
+ 		pending.defer.abort();
+ 	delete pending.defer;
++	if (pending.timer)
++		pending.timer.cancel();
++	delete pending.timer;
+ 	switch (state) {
+ 	case "init":
+ 		iface_update_supplicant_macaddr(phydev, config);
+@@ -274,7 +278,16 @@
+ {
+ 	let ubus = hostapd.data.ubus;
+ 	let pending = this;
+-	this.defer = ubus.defer(obj, method, arg, (ret, data) => { delete pending.defer; pending.next(ret, data) });
++
++	/* libubus can run this from inside a synchronous ubus call, so continue
++	 * from the event loop */
++	this.defer = ubus.defer(obj, method, arg, (ret, data) => {
++		delete pending.defer;
++		pending.timer = uloop.timer(0, () => {
++			delete pending.timer;
++			pending.next(ret, data);
++		});
++	});
+ }
+ 
+ const iface_pending_proto = {
+@@ -837,6 +850,11 @@
+ 
+ function iface_config_remove(name, old_config)
+ {
++	let pending = hostapd.data.pending_config[name];
++
++	if (pending)
++		pending.abort();
++
+ 	hostapd.remove_iface(name);
+ 	return iface_remove(old_config);
+ }

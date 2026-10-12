@@ -1,0 +1,35 @@
+#!/bin/sh
+# tether-metric <interface> <metric>: give a phone or USB adapter (a dynamic tether_* interface that
+# /etc/hotplug.d/net/30-travel-tether created) a new metric. netifd cannot change a dynamic interface's
+# metric in place, so it is removed and added again; its path drops for a second or two while DHCP runs.
+name="$1"
+metric="$2"
+case "$name" in tether_*) ;; *) exit 1 ;; esac
+case "$metric" in '' | *[!0-9]*) exit 1 ;; esac
+st="$(ifstatus "$name" 2>/dev/null)"
+dev="$(jsonfilter -q -s "$st" -e '@.device')"
+[ -n "$dev" ] || dev="$(jsonfilter -q -s "$st" -e '@.l3_device')"
+[ -n "$dev" ] || dev="${name#tether_}"
+[ -e "/sys/class/net/$dev" ] || exit 1
+# netifd tears a removed interface down after 'remove' returns. Adding the new one at once let the old
+# one's teardown (its DHCP client's SIGTERM, link-up false) land on the new one, and the phone was gone
+# (2026-10-12 11:42:18, on the router: "re-added with metric 6", then "tether_usb0 is now down" in the
+# same second). So: wait until the old one has left ubus, add the new one, wait until it is up, and add
+# it once more if it is not.
+gone() { ! ubus list "network.interface.$name" >/dev/null 2>&1; }
+up() { [ "$(ifstatus "$name" 2>/dev/null | jsonfilter -q -e '@.up')" = true ]; }
+add() { ubus call network add_dynamic "{\"name\":\"$name\",\"device\":\"$dev\",\"proto\":\"dhcp\",\"metric\":$metric,\"zone\":\"wan\"}" >/dev/null 2>&1; }
+wait_for() {	# wait_for <test> <seconds> (BusyBox sleep here takes whole seconds only)
+	i=0
+	while ! "$1"; do [ "$i" -ge "$2" ] && return 1; sleep 1; i=$((i + 1)); done
+}
+ubus call "network.interface.$name" remove >/dev/null 2>&1
+wait_for gone 5
+add
+if ! wait_for up 15; then
+	ubus call "network.interface.$name" remove >/dev/null 2>&1
+	wait_for gone 5
+	add
+	wait_for up 15 || { logger -t travel "internet source $name ($dev) did not come back with metric $metric"; exit 1; }
+fi
+logger -t travel "internet source $name ($dev) re-added with metric $metric"

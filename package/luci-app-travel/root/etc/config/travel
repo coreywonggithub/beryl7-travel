@@ -1,0 +1,29 @@
+config travel 'main'
+	# Which way out traffic takes: direct, exitnode, wireguard or nikki
+	option mode 'direct'
+	# Tailscale exit node (its 100.x address) and UniFi WireGuard profile
+	option exit_node ''
+	option wg ''
+	# The mode slider. Region picks what "on" means: china = nikki,
+	# world = world_mode (exitnode or wireguard). "Off" is always direct.
+	option switch_enabled '1'
+	option region 'world'
+	option world_mode 'exitnode'
+	option switch_on 'exitnode'
+	option switch_off 'direct'
+	# Pause the tunnel while travelmate reports a Wi-Fi login page
+	option portal_hold '1'
+	# Route around an uplink that stays connected with no internet (0 = off)
+	option health '1'
+	# Wi-Fi events and route changes into the system log (0 = off)
+	option log_events '1'
+	# Set Wi-Fi country rules from what nearby access points announce
+	option auto_country '1'
+	# Where lookups go while a tunnel is on (they travel inside the tunnel)
+	option tunnel_dns '1.1.1.1 8.8.8.8'
+	option tether_metric '30'
+	# Make everything behind the router look like one device (TTL 64/65)
+	option hide_router '1'
+	# Friendly names for exit nodes, by Tailscale host name or, when that is shared (two Apple TVs are both
+	# 'apple-tv'), by the first part of the MagicDNS name, for example:
+	# list label 'home-pi=Home: Pi'

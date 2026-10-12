@@ -1,0 +1,8 @@
+#!/bin/sh
+# Compressed swap in RAM (zram-swap): a safety net for memory spikes on this
+# 512 MB board, e.g. nikki and Tailscale running together in China mode.
+# zstd packs memory tighter than the package's lzo default and is the only
+# compressor built into this image. Size stays the package default: half the RAM.
+uci set system.@system[0].zram_comp_algo='zstd'
+uci commit system
+exit 0

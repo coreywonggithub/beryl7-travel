@@ -1,0 +1,30 @@
+#!/usr/bin/ucode
+'use strict';
+// Sandbox only: stands in for /usr/sbin/nft. The sandbox may not touch the
+// build box's netfilter, so LuCI's Status > Firewall would find nothing. What
+// it asks for ("nft --terse --json list ruleset") is answered from the ruleset
+// serve-ui.sh had firewall4 generate for this router's config and load into a
+// throwaway network namespace; the counters, all zero there, are given
+// something to count. Anything else goes to the real binary.
+import { readfile } from 'fs';
+
+const RULESET = '/usr/libexec/sandbox/nft.json';
+
+let asked = join(' ', ARGV);
+let data = (index(asked, '--json') >= 0 && index(asked, 'list ruleset') >= 0) ? json(readfile(RULESET) ?? 'null') : null;
+
+if (data?.nftables) {
+	for (let item in data.nftables) {
+		let r = item.rule;
+		if (!r) continue;
+		for (let e in (r.expr ?? [])) {
+			if (!e.counter) continue;
+			let n = (r.handle * 7919) % 9000 + 3;
+			e.counter.packets = n;
+			e.counter.bytes = n * 640;
+		}
+	}
+	printf('%J\n', data);
+}
+else
+	exit(system([ '/usr/sbin/nft.real', ...ARGV ]));

@@ -1,0 +1,2 @@
+config nlbwmon
+	option database_interval '1'

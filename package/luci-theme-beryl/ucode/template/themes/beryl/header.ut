@@ -1,0 +1,105 @@
+{#
+ Copyright 2008 Steven Barth <steven@midlink.org>
+ Copyright 2012 David Menting <david@nut-bolt.nl>
+ Copyright 2008-2022 Jo-Philipp Wich <jo@mein.io>
+ Beryl theme changes Copyright 2026 Corey Wong
+ Licensed to the public under the Apache License 2.0.
+ Derived from luci-theme-bootstrap; see NOTICE.
+-#}
+
+{%
+	import { getuid, getspnam } from 'luci.core';
+
+	const boardinfo = ubus.call('system', 'board');
+	// Bump on every theme change: stylesheet URLs carry it, so browsers fetch
+	// the new CSS after an upgrade instead of reusing a cached copy.
+	// browsers cache the stylesheets by this: bump it with them (build.sh refuses an older date)
+	const beryl_rev = '2026101201';
+	const darkpref = (theme == 'beryl-dark' ? 'true' : (theme == 'beryl-light' ? 'false' : null));
+	// "BerylConsole" is Beryl plus one skin file (skin-console.css), which only
+	// applies under <html data-skin="console">; the plain theme never loads it.
+	const skin = (theme == 'beryl-console') ? 'console' : null;
+
+	http.prepare_content('text/html; charset=UTF-8');
+-%}
+
+<!DOCTYPE html>
+<html lang="{{ dispatcher.lang }}" {{ darkpref ? `data-darkmode="${darkpref}"` : '' }} {{ skin ? `data-skin="${skin}"` : '' }}>
+	<head>
+		<meta charset="utf-8">
+		<title>{{ striptags(`${boardinfo.hostname ?? '?'}${dispatched?.title ? ` | ${_(dispatched.title)}` : ''}`) }}</title>
+		{% if (!darkpref): %}
+			<script>
+				var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)'),
+				    rootElement = document.querySelector(':root'),
+				    setDarkMode = function(match) { rootElement.setAttribute('data-darkmode', match.matches) };
+
+				mediaQuery.addEventListener('change', setDarkMode);
+				setDarkMode(mediaQuery);
+			</script>
+		{% endif %}
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="darkreader-lock">
+		<meta name="theme-color" content="{{ skin ? '#EEF2F6' : '#F5F4F0' }}" media="(prefers-color-scheme: light)">
+		<meta name="theme-color" content="{{ skin ? '#0C1117' : '#1C1C1B' }}" media="(prefers-color-scheme: dark)">
+		<link rel="stylesheet" href="{{ media }}/cascade.css?v={{ beryl_rev }}">
+		<link rel="stylesheet" media="only screen and (max-width: 860px)" href="{{ media }}/mobile.css?v={{ beryl_rev }}">
+		{% if (skin): %}
+		<link rel="stylesheet" href="{{ media }}/skin-{{ skin }}.css?v={{ beryl_rev }}">
+		{% endif %}
+		<link rel="icon" href="{{ media }}/{{ skin ? `skin-${skin}-icon.svg` : 'logo.svg' }}?v={{ beryl_rev }}" sizes="any">
+		{% if (skin): %}
+		<link rel="apple-touch-icon" href="{{ media }}/skin-{{ skin }}-touch.png?v={{ beryl_rev }}">
+		{% endif %}
+		{% if (node?.css): %}
+		<link rel="stylesheet" href="{{ resource }}/{{ node.css }}">
+		{% endif %}
+		{% if (css): %}
+		<style title="text/css">{{ css }}</style>
+		{% endif %}
+		<script src="{{ dispatcher.build_url('admin/translations', dispatcher.lang) }}"></script>
+		<script src="{{ resource }}/cbi.js"></script>
+	</head>
+
+	<body class="lang_{{ dispatcher.lang }} {{ entityencode(striptags(node?.title ?? ''), true) }}" data-page="{{ entityencode(join('-', ctx.request_path), true) }}">
+		{% if (!blank_page): %}
+		<header>
+			<button class="menu-toggle" type="button" aria-label="{{ _('Menu') }}" aria-controls="topmenu" aria-expanded="false"
+				onclick="var o=document.body.classList.toggle('menu-open');this.setAttribute('aria-expanded',o)">
+				<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+			</button>
+			<a class="brand" href="/">{{ striptags(boardinfo.hostname ?? '?') }}</a>
+			<ul class="nav" id="topmenu" style="display:none"></ul>
+			<div id="indicators" class="pull-right"></div>
+		</header>
+
+		<div id="maincontent" class="container">
+			{% if (getuid() == 0 && getspnam('root')?.pwdp === ''): %}
+				<div class="alert-message warning">
+					<h4>{{ _('No password set!') }}</h4>
+					<p>{{ _('There is no password set on this router. Please configure a root password to protect the web interface.') }}</p>
+					{% if (dispatcher.lookup("admin/system/admin")): %}
+					  <div class="right"><a class="btn" href="{{ dispatcher.build_url("admin/system/admin") }}">{{ _('Go to password configuration...') }}</a></div>
+					{% endif %}
+				</div>
+			{% endif %}
+
+			{% if (boardinfo.rootfs_type == "initramfs"): %}
+				<div class="alert-message warning">
+					<h4>{{ _('System running in recovery (initramfs) mode.') }}</h4>
+					<p>{{ _('No changes to settings will be stored and are lost after rebooting. This mode should only be used to install a firmware upgrade') }}</p>
+					{% if (dispatcher.lookup("admin/system/flash")): %}
+					  <div class="right"><a class="btn" href="{{ dispatcher.build_url("admin/system/flash") }}">{{ _('Go to firmware upgrade...') }}</a></div>
+					{% endif %}
+				</div>
+			{% endif %}
+
+			<noscript>
+				<div class="alert-message warning">
+					<h4>{{ _('JavaScript required!') }}</h4>
+					<p>{{ _('You must enable JavaScript in your browser or LuCI will not work properly.') }}</p>
+				</div>
+			</noscript>
+
+			<div id="tabmenu" style="display:none"></div>
+		{% endif %}

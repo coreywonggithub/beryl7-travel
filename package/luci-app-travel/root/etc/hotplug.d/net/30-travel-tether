@@ -1,0 +1,36 @@
+#!/bin/sh
+# A phone plugged in for USB tethering (iPhone, Android) or a USB network
+# adapter becomes an internet source by itself: a dynamic DHCP interface in
+# the wan zone, removed again when unplugged. No config is written.
+[ "$SUBSYSTEM" = net ] || exit 0
+dev="${DEVICENAME:-$INTERFACE}"
+name="tether_$(echo "$dev" | tr -c 'a-zA-Z0-9_\n' '_')"
+
+case "$ACTION" in
+add)
+	drv="$(basename "$(readlink "/sys/class/net/$dev/device/driver" 2>/dev/null)")"
+	case "$drv" in
+	rndis_host|cdc_ncm|cdc_ether|huawei_cdc_ncm|ipheth|cdc_mbim|qmi_wwan) ;;
+	*) exit 0 ;;
+	esac
+	metric="$(uci -q get travel.main.tether_metric)"
+	ubus call network add_dynamic "{\"name\":\"$name\",\"device\":\"$dev\",\"proto\":\"dhcp\",\"metric\":${metric:-30},\"zone\":\"wan\"}"
+	# a phone forwards our packets once more before the carrier sees them
+	case "$drv" in
+	ipheth|rndis_host|cdc_ncm)
+		mkdir -p /var/run/travel
+		echo "$dev" >"/var/run/travel/phone.$dev"
+		/usr/libexec/travel/ttl
+		;;
+	esac
+	logger -t travel "phone or USB adapter $dev ($drv) added as internet source $name"
+	;;
+remove)
+	ubus call "network.interface.$name" remove >/dev/null 2>&1
+	if [ -e "/var/run/travel/phone.$dev" ]; then
+		rm -f "/var/run/travel/phone.$dev"
+		/usr/libexec/travel/ttl
+	fi
+	;;
+esac
+exit 0

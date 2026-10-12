@@ -1,0 +1,16 @@
+#!/bin/sh
+# Beryl 7 build: normal best-effort MU EDCA values on every radio (2026-10-07).
+# hostapd's defaults (AIFSN 8, ECWmin 9, ECWmax 10, timer 255) make a Wi-Fi 6 client that the access point
+# polled for scheduled uplink wait about 30 times longer before each transmission, for about 2 s at a time.
+# Measured on the Beryl 2026-10-06: the Air's upload into it rose from about 108 to 147-164 Mbps with the
+# normal values (AIFSN 3, ECWmin 4, ECWmax 10), downloads unchanged. The rest of the upload gap is left to
+# MediaTek and mt76: DEC-2026-1007-INFRA-BERYL7-UPLOAD-WAIT-FOR-UPSTREAM.
+# Our own setting (wifi-device options), not a patch to another package's file.
+[ -s /etc/config/wireless ] || wifi config
+for r in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
+	uci set "wireless.$r.he_mu_edca_ac_be_aifsn=3"
+	uci set "wireless.$r.he_mu_edca_ac_be_ecwmin=4"
+	uci set "wireless.$r.he_mu_edca_ac_be_ecwmax=10"
+done
+uci commit wireless
+exit 0

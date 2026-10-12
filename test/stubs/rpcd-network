@@ -1,0 +1,16 @@
+#!/usr/bin/ucode
+// Sandbox only: netifd's "network" object. LuCI reads the list of protocol
+// handlers (which decide what the "Protocol" drop-down offers); the reload
+// calls of "Save & Apply" are accepted and do nothing.
+import { serve } from 'sandbox';
+
+serve({
+	get_proto_handlers: {
+		call: () => ({
+			static: { no_device: false }, dhcp: { no_device: false }, dhcpv6: { no_device: false },
+			ppp: { no_device: false }, pppoe: { no_device: false }, none: { no_device: false }
+		})
+	},
+	reload: { call: () => ({}) },
+	restart: { call: () => ({}) }
+});

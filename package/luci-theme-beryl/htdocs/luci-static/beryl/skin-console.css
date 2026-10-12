@@ -1,0 +1,979 @@
+/*
+ * Beryl Console: a skin over the Beryl theme and the travel panel.
+ *
+ * Loaded only when the theme "BerylConsole" is chosen (System, Language and
+ * Style). Its header tags the page <html data-skin="console"> and links this
+ * file after cascade.css, so every rule here sits under [data-skin="console"]
+ * and the plain Beryl theme never sees it. Markup and behaviour are untouched:
+ * this file changes colours, type and a few console touches only, on the
+ * panel and on every other LuCI page alike.
+ *
+ * The idea is a network console (dark slate, one blue accent, colour-coded
+ * status, line icons, gridded graphs), drawn from scratch: no third-party
+ * artwork, fonts or files. Nothing is fetched, because the router may have
+ * no internet while this page is open; icons are inline SVG masks.
+ *
+ * Graph series: blue for download, orange for upload. The pair passes a
+ * colour-blind separation check in both modes (OKLab dE about 28 protan,
+ * 2026-10-06), and each stat carries an arrow, so colour is never alone.
+ */
+
+/* ------------------------------------------------------------------ *
+ *  Tokens: console palette (light first, dark below)
+ * ------------------------------------------------------------------ */
+
+:root[data-skin="console"] {
+	/* light is Chambray, a light blue shirt rather than white paper (Corey, 2026-10-09): the dark slate's mirror */
+	--cs-page: #d3e2f1;
+	--cs-card: #e8f1fa;
+	--cs-card-2: #dde8f4;
+	--cs-field: #f7f9fc;
+	--cs-line: rgba(15, 30, 55, .10);
+	--cs-line-2: rgba(15, 30, 55, .22);
+	--cs-text: #0f1824;
+	--cs-text-2: #536073;
+	--cs-text-3: #687385;		/* 4.2:1 on a card; #7d8899 fell to 3.1 on the tint */
+	--cs-accent: #1664cf;		/* 4.9:1 on a card as text, white on it 5.6:1 */
+	--cs-accent-2: #1459bb;
+	--cs-accent-3: #124f9f;
+	--cs-accent-bg: #d4e4fa;	/* a selected state must stand out from the tinted card */
+	--cs-on-accent: #ffffff;
+	--cs-ok: #0f7a48;
+	--cs-ok-bg: #e3f5ec;
+	--cs-warn: #8a5800;
+	--cs-warn-bg: #fdf1db;
+	--cs-err: #c4302b;
+	--cs-err-bg: #fdecec;
+	--cs-info: #134f9e;
+	--cs-overlay: rgba(12, 20, 32, .45);
+	--cs-shadow: 0 1px 2px rgba(16, 32, 56, .07);
+	--cs-pop: 0 12px 32px rgba(16, 32, 56, .16);
+	--cs-down: #1a6fe0;
+	--cs-up: #d9690f;
+	--cs-third: #c4302b;
+	--cs-plot: #fbfcfe;
+	--cs-grid: rgba(15, 30, 55, .06);
+	--cs-brand: linear-gradient(135deg, #3fc8d8, #1a6fe0 55%, #1550b0);
+
+	/* Beryl's own tokens */
+	--beryl-page: var(--cs-page);
+	--beryl-card: var(--cs-card);
+	--beryl-card-2: var(--cs-card-2);
+	--beryl-line: var(--cs-line);
+	--beryl-line-strong: var(--cs-line-2);
+	--beryl-text: var(--cs-text);
+	--beryl-text-2: var(--cs-text-2);
+	--beryl-text-3: var(--cs-text-3);
+	--beryl-accent: var(--cs-accent);
+	--beryl-accent-bg: var(--cs-accent-bg);
+	--beryl-on-accent: var(--cs-on-accent);
+	--beryl-ok-bg: var(--cs-ok-bg);
+	--beryl-ok-text: var(--cs-ok);
+	--beryl-warn-bg: var(--cs-warn-bg);
+	--beryl-warn-text: var(--cs-warn);
+	--beryl-err-bg: var(--cs-err-bg);
+	--beryl-err-text: var(--cs-err);
+	--beryl-info-bg: var(--cs-accent-bg);
+	--beryl-info-text: var(--cs-info);
+	--beryl-focus: 0 0 0 3px rgba(26, 111, 224, .22);
+	--beryl-radius: 8px;
+	--beryl-radius-card: 12px;
+
+	/* the upstream bootstrap tokens under them */
+	--background-color-h: 214;
+	--background-color-s: 30%;
+	--text-color-h: 214;
+	--text-color-s: 30%;
+	--primary-color-high: var(--cs-accent);
+	--primary-color-medium: var(--cs-accent-2);
+	--primary-color-low: var(--cs-accent-3);
+}
+
+:root[data-skin="console"][data-darkmode="true"] {
+	--cs-page: #0c1117;
+	--cs-card: #141b24;
+	--cs-card-2: #1a2330;
+	--cs-field: #0f151d;
+	--cs-line: rgba(148, 170, 200, .12);
+	--cs-line-2: rgba(148, 170, 200, .24);
+	--cs-text: #e7ecf3;
+	--cs-text-2: #98a5b7;
+	--cs-text-3: #6e7a8c;
+	--cs-accent: #4b9bff;
+	--cs-accent-2: #3b8cf0;
+	--cs-accent-3: #2a6fd0;
+	--cs-accent-bg: rgba(75, 155, 255, .14);
+	--cs-on-accent: #05101e;
+	--cs-ok: #45d494;
+	--cs-ok-bg: rgba(63, 209, 143, .13);
+	--cs-warn: #f3b84f;
+	--cs-warn-bg: rgba(243, 183, 79, .13);
+	--cs-err: #ff8080;
+	--cs-err-bg: rgba(255, 125, 125, .13);
+	--cs-info: #9cc8ff;
+	--cs-overlay: rgba(4, 7, 12, .66);
+	--cs-shadow: 0 1px 2px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .025);
+	--cs-pop: 0 16px 40px rgba(0, 0, 0, .5);
+	--cs-down: #3b8cf0;
+	--cs-up: #d66f24;
+	--cs-third: #e2524f;
+	--cs-plot: #10161e;
+	--cs-grid: rgba(148, 170, 200, .07);
+	--cs-brand: linear-gradient(135deg, #4fd3e0, #2f86f0 55%, #1d5cc4);
+
+	--beryl-focus: 0 0 0 3px rgba(75, 155, 255, .30);
+
+	--background-color-s: 28%;
+	--background-color-l: 11.5%;
+	--text-color-s: 25%;
+	--text-color-l: 92%;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Tokens: the travel panel (same palette)
+ *  panel.css loads after this file and its dark rule is (0,2,1), so the
+ *  block below matches on data-darkmode too, which Beryl's header always
+ *  sets ("true" or "false"): (0,3,1) wins in both modes. The values follow
+ *  the --cs-* tokens, which switch between light and dark on :root.
+ * ------------------------------------------------------------------ */
+
+html[data-skin="console"] .travel-panel,
+html[data-skin="console"][data-darkmode] .travel-panel {
+	--tp-page: var(--cs-page);
+	--tp-card: var(--cs-card);
+	--tp-field: var(--cs-field);
+	--tp-border: var(--cs-line);
+	--tp-border-2: var(--cs-line-2);
+	--tp-text: var(--cs-text);
+	--tp-text-2: var(--cs-text-2);
+	--tp-accent: var(--cs-accent);
+	--tp-accent-bg: var(--cs-accent-bg);
+	--tp-on-accent: var(--cs-on-accent);
+	--tp-ok-bg: var(--cs-ok-bg);
+	--tp-ok-text: var(--cs-ok);
+	--tp-warn-bg: var(--cs-warn-bg);
+	--tp-warn-text: var(--cs-warn);
+	--tp-idle-bg: rgba(83, 96, 115, .09);
+	--tp-idle-text: var(--cs-text-2);
+	--tp-danger-text: var(--cs-err);
+	--tp-overlay: var(--cs-overlay);
+}
+
+html[data-skin="console"][data-darkmode="true"] .travel-panel {
+	color-scheme: dark;
+
+	--tp-idle-bg: rgba(148, 170, 200, .09);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Icons: line drawings on a 24 px grid (1.8 stroke, round ends), used
+ *  as masks so they take the colour of whatever paints them.
+ * ------------------------------------------------------------------ */
+
+:root[data-skin="console"] {
+	--cs-i-router: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11.5' width='18' height='8' rx='2.5'/%3E%3Cpath d='M7 11.5L5.4 4.2M17 11.5l1.6-7.3M7.5 15.5h.01M10.5 15.5h.01M13.5 15.5h.01'/%3E%3C/svg%3E");
+	--cs-i-pulse: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12h4l2.5-6 5 12 2.5-6h4'/%3E%3C/svg%3E");
+	--cs-i-key: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='15' r='4'/%3E%3Cpath d='M10.9 12.1L19 4M15.5 7.5l2.5 2.5M13.5 9.5l2 2'/%3E%3C/svg%3E");
+	--cs-i-globe: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18'/%3E%3C/svg%3E");
+	--cs-i-tower: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 11.5V20M8.6 14.4a5 5 0 0 1 0-7M15.4 14.4a5 5 0 0 0 0-7M5.6 17.4a9.2 9.2 0 0 1 0-13M18.4 17.4a9.2 9.2 0 0 0 0-13'/%3E%3Ccircle cx='12' cy='10.9' r='1.3'/%3E%3C/svg%3E");
+	--cs-i-devices: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='5' width='13' height='9' rx='1.5'/%3E%3Cpath d='M1.5 17.5h14'/%3E%3Crect x='17.5' y='8.5' width='5' height='10.5' rx='1.2'/%3E%3C/svg%3E");
+	--cs-i-wifi: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 9a14 14 0 0 1 19 0M5.7 12.4a9.5 9.5 0 0 1 12.6 0M8.9 15.8a5 5 0 0 1 6.2 0'/%3E%3Ccircle cx='12' cy='19.2' r='1.1' fill='%23000' stroke='none'/%3E%3C/svg%3E");
+	--cs-i-map: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4.5L3.5 6.8v12.7L9 17.2l6 2.3 5.5-2.3V4.5L15 6.8z'/%3E%3Cpath d='M9 4.5v12.7M15 6.8v12.7'/%3E%3C/svg%3E");
+	--cs-i-sliders: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h9M17 7h3M4 17h3M11 17h9'/%3E%3Ccircle cx='15' cy='7' r='2'/%3E%3Ccircle cx='9' cy='17' r='2'/%3E%3C/svg%3E");
+	--cs-i-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v13M6 12l6 6 6-6'/%3E%3C/svg%3E");
+	--cs-i-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V6M6 12l6-6 6 6'/%3E%3C/svg%3E");
+	/* top-level menu items */
+	--cs-i-suitcase: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='6.5' width='12' height='13' rx='2.2'/%3E%3Cpath d='M10 6.5V4.2h4v2.3M9.8 10v6M14.2 10v6M8.6 19.5v1.3M15.4 19.5v1.3'/%3E%3C/svg%3E");
+	--cs-i-gauge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.6 17.5a8.6 8.6 0 1 1 14.8 0'/%3E%3Cpath d='M12 13.6l3.6-4.4'/%3E%3Ccircle cx='12' cy='13.8' r='1.3'/%3E%3C/svg%3E");
+	--cs-i-chip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6.5' y='6.5' width='11' height='11' rx='2'/%3E%3Crect x='9.6' y='9.6' width='4.8' height='4.8' rx='.8'/%3E%3Cpath d='M9.5 3.6v2.9M14.5 3.6v2.9M9.5 17.5v2.9M14.5 17.5v2.9M3.6 9.5h2.9M3.6 14.5h2.9M17.5 9.5h2.9M17.5 14.5h2.9'/%3E%3C/svg%3E");
+	--cs-i-apps: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='6.5' height='6.5' rx='1.6'/%3E%3Crect x='13.5' y='4' width='6.5' height='6.5' rx='1.6'/%3E%3Crect x='4' y='13.5' width='6.5' height='6.5' rx='1.6'/%3E%3Crect x='13.5' y='13.5' width='6.5' height='6.5' rx='1.6'/%3E%3C/svg%3E");
+	--cs-i-topology: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3.5' width='6' height='5' rx='1.2'/%3E%3Crect x='3' y='15.5' width='6' height='5' rx='1.2'/%3E%3Crect x='15' y='15.5' width='6' height='5' rx='1.2'/%3E%3Cpath d='M12 8.5V12M6 15.5V12h12v3.5'/%3E%3C/svg%3E");
+	--cs-i-logout: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H10'/%3E%3Cpath d='M14.5 8l4 4-4 4M18.5 12H9.5'/%3E%3C/svg%3E");
+	/* the brand mark: a cut gemstone (beryl is one), white on the tile */
+	--cs-i-gem: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4.5h10l4 5-9 11-9-11z'/%3E%3Cpath d='M3 9.5h18M10 4.5L8 9.5l4 11 4-11-2-5' opacity='.62'/%3E%3C/svg%3E");
+}
+
+/* ================================================================== *
+ *  LuCI: every page
+ * ================================================================== */
+
+[data-skin="console"] body {
+	background: var(--cs-page);
+	color: var(--cs-text);
+}
+
+/* a faint wash of the accent at the top of the page, dark mode only */
+[data-skin="console"][data-darkmode="true"] body {
+	background:
+		radial-gradient(1100px 420px at 50% -200px, rgba(75, 155, 255, .10), transparent 70%) no-repeat,
+		var(--cs-page);
+}
+
+[data-skin="console"] h2 {
+	font-weight: 600;
+	letter-spacing: -.01em;
+}
+
+/* ---- header: the console bar ---------------------------------------- */
+
+[data-skin="console"] header {
+	background: var(--cs-card);
+	border-bottom: .5px solid var(--cs-line);
+	box-shadow: var(--cs-shadow);
+}
+
+[data-skin="console"] header .brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-weight: 600;
+}
+
+[data-skin="console"] header .brand::before {
+	content: "";
+	flex: none;
+	width: 28px;
+	height: 28px;
+	border-radius: 8px;
+	background: var(--cs-i-gem) center / 18px no-repeat, var(--cs-brand);
+	box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .25);
+}
+
+[data-skin="console"] .nav > li > a {
+	font-weight: 500;
+}
+
+[data-skin="console"] .dropdown-menu,
+[data-skin="console"] .nav .dropdown-menu {
+	box-shadow: var(--cs-pop);
+}
+
+/* each top-level menu item leads with its icon (menu-beryl.js names them) */
+[data-skin="console"] #topmenu > li[data-menu] > a {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+}
+
+[data-skin="console"] #topmenu > li[data-menu] > a::before {
+	content: "";
+	flex: none;
+	width: 16px;
+	height: 16px;
+	background: currentColor;
+	-webkit-mask: var(--cs-nav, none) center / contain no-repeat;
+	mask: var(--cs-nav, none) center / contain no-repeat;
+}
+
+[data-skin="console"] #topmenu > li[data-menu] > a.menu::after {
+	margin-top: 0;
+}
+
+/* icons make the bar wider: tighter items keep it on one line at 1000 px,
+   even with LuCI's "Unsaved Changes" pill beside "Refreshing" */
+@media (min-width: 861px) {
+	[data-skin="console"] .nav > li > a {
+		margin: 0 1px;
+		padding: 7px 9px;
+	}
+
+	[data-skin="console"] #topmenu > li[data-menu] > a {
+		gap: 6px;
+	}
+
+	/* the icon already marks a menu; its caret only costs width */
+	[data-skin="console"] #topmenu > li[data-menu] > a.menu::after {
+		display: none;
+	}
+
+	/* The dropdown sits right under its item. Bootstrap placed it at 40 px, the height of its own items; these
+	   are 34 px, which left a 6 px strip where the pointer was over neither, so every menu closed on the way
+	   down to its entries (Corey, 2026-10-09: "if the mouse moved to the drop-down, the drop-down disappears").
+	   A pointer that slips off for a moment gets 150 ms before the menu closes; keyboard focus opens it too. */
+	[data-skin="console"] #topmenu > li > ul.dropdown-menu {
+		top: 100%;
+		transition: left 0s 150ms;
+	}
+
+	[data-skin="console"] #topmenu > li.dropdown:hover > ul.dropdown-menu,
+	[data-skin="console"] #topmenu > li.dropdown:focus-within > ul.dropdown-menu {
+		left: 0;
+		transition-delay: 0s;
+	}
+
+	[data-skin="console"] #indicators [data-indicator] {
+		padding: 3px 9px;
+	}
+}
+
+[data-skin="console"] #topmenu > li[data-menu="travel"] { --cs-nav: var(--cs-i-suitcase); }
+[data-skin="console"] #topmenu > li[data-menu="status"] { --cs-nav: var(--cs-i-gauge); }
+[data-skin="console"] #topmenu > li[data-menu="system"] { --cs-nav: var(--cs-i-chip); }
+[data-skin="console"] #topmenu > li[data-menu="services"] { --cs-nav: var(--cs-i-apps); }
+[data-skin="console"] #topmenu > li[data-menu="network"] { --cs-nav: var(--cs-i-topology); }
+[data-skin="console"] #topmenu > li[data-menu="logout"] { --cs-nav: var(--cs-i-logout); }
+
+/* status pills in the bar carry a dot, like every status here */
+[data-skin="console"] #indicators > span,
+[data-skin="console"] #indicators [data-indicator] {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+[data-skin="console"] #indicators > span::before,
+[data-skin="console"] #indicators [data-indicator]::before {
+	content: "";
+	flex: none;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+/* ---- sections: cards with small-capital labels ---------------------- */
+
+[data-skin="console"] .cbi-section,
+[data-skin="console"] .cbi-map > fieldset,
+[data-skin="console"] .cbi-tblsection {
+	box-shadow: var(--cs-shadow);
+}
+
+[data-skin="console"] .cbi-section .cbi-section,
+[data-skin="console"] .cbi-section .cbi-tblsection,
+[data-skin="console"] .cbi-value > .cbi-section,
+[data-skin="console"] .cbi-value > .cbi-tblsection,
+[data-skin="console"] .cbi-tab .cbi-section,
+[data-skin="console"] .cbi-section-node .cbi-section,
+[data-skin="console"] #modal_overlay .cbi-section,
+[data-skin="console"] #modal_overlay .cbi-map > fieldset {
+	box-shadow: none;
+}
+
+[data-skin="console"] .cbi-section > h3,
+[data-skin="console"] .cbi-section > .cbi-title > h3,
+[data-skin="console"] .cbi-section > legend,
+[data-skin="console"] .cbi-map > fieldset > legend,
+[data-skin="console"] .cbi-tblsection > h3 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--cs-text-2);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 18px;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+}
+
+[data-skin="console"] .cbi-section > h3::before,
+[data-skin="console"] .cbi-section > .cbi-title > h3::before,
+[data-skin="console"] .cbi-section > legend::before,
+[data-skin="console"] .cbi-map > fieldset > legend::before,
+[data-skin="console"] .cbi-tblsection > h3::before {
+	content: "";
+	flex: none;
+	width: 3px;
+	height: 12px;
+	border-radius: 2px;
+	background: var(--cs-accent);
+}
+
+/* Status > Overview titles carry an inline "space-between" and a Hide
+   button: keep the title by its bar and push the button to the end */
+[data-skin="console"] .cbi-section > .cbi-title > h3 {
+	justify-content: flex-start !important;
+}
+
+[data-skin="console"] .cbi-section > .cbi-title > h3 > .label {
+	margin-left: auto;
+	letter-spacing: .04em;
+}
+
+/* ---- tables: quiet capitals on top, aligned figures below ----------- */
+
+[data-skin="console"] .table .th,
+[data-skin="console"] .table-titles .th,
+[data-skin="console"] .cbi-section-table-titles .th {
+	color: var(--cs-text-3);
+	font-size: 11.5px;
+	font-weight: 600;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+}
+
+[data-skin="console"] .table .td {
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- inputs sit a step below the card they are on ------------------- */
+
+[data-skin="console"] input:where(:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="file"], [type="range"], [type="image"])),
+[data-skin="console"] select,
+[data-skin="console"] textarea,
+[data-skin="console"] .cbi-dropdown:not(.btn):not(.cbi-button),
+[data-skin="console"] .cbi-input-text,
+[data-skin="console"] .cbi-input-password,
+[data-skin="console"] .cbi-input-select {
+	background-color: var(--cs-field);
+}
+
+/* ---- meters (memory, storage) --------------------------------------- */
+
+/* a thin bar with its figures above it, left-aligned like a readout */
+[data-skin="console"] .cbi-progressbar {
+	height: 6px;
+	margin: 1.7em 0 6px;
+	overflow: visible;
+	border: 0;
+	background: var(--cs-field);
+	box-shadow: inset 0 0 0 .5px var(--cs-line);
+}
+
+[data-skin="console"] .cbi-progressbar::before {
+	top: -1.7em;
+	right: 0;
+	padding: 0;
+	color: var(--cs-text-2);
+	font-size: 12px;
+	line-height: 1.5;
+	text-align: left;
+	font-variant-numeric: tabular-nums;
+}
+
+[data-skin="console"] .cbi-progressbar > div {
+	border-radius: 999px;
+	background: linear-gradient(90deg, var(--cs-accent-3), var(--cs-accent));
+}
+
+/* ---- messages carry a bar in their own colour ----------------------- */
+
+[data-skin="console"] .alert-message {
+	box-shadow: inset 3px 0 0 var(--cs-accent);
+}
+
+[data-skin="console"] .alert-message.warning {
+	box-shadow: inset 3px 0 0 var(--cs-warn);
+}
+
+[data-skin="console"] .alert-message.error,
+[data-skin="console"] .alert-message.danger {
+	box-shadow: inset 3px 0 0 var(--cs-err);
+}
+
+[data-skin="console"] .alert-message.success {
+	box-shadow: inset 3px 0 0 var(--cs-ok);
+}
+
+/* ---- dialogs ------------------------------------------------------------ */
+
+[data-skin="console"] #modal_overlay {
+	background: var(--cs-overlay);
+}
+
+[data-skin="console"] #modal_overlay > .modal {
+	box-shadow: var(--cs-pop);
+}
+
+/* ---- Status, Realtime Graphs ---------------------------------------
+ * LuCI draws these with inline styles (white box, black rules, blue and
+ * green series), so only !important reaches them. Series keep their
+ * legend: LuCI's blue becomes the console blue, its green the orange,
+ * its red the third colour; the load page keeps its own warm ramp. */
+
+[data-skin="console"] #view div[style*="border:1px solid #000"] {
+	border: .5px solid var(--cs-line) !important;
+	border-radius: 10px;
+	background: var(--cs-plot) !important;
+	overflow: hidden;
+}
+
+[data-skin="console"] #view div[style*="border:1px solid #000"] svg line {
+	stroke: var(--cs-line-2) !important;
+	stroke-width: 1 !important;
+	stroke-dasharray: 3 4;
+}
+
+[data-skin="console"] #view div[style*="border:1px solid #000"] svg text {
+	fill: var(--cs-text-2) !important;
+	font-size: 11px !important;
+	text-shadow: none !important;
+}
+
+[data-skin="console"] #view svg polyline[style*="stroke:blue"] {
+	fill: var(--cs-down) !important;
+	fill-opacity: .14 !important;
+	stroke: var(--cs-down) !important;
+	stroke-width: 1.6 !important;
+}
+
+[data-skin="console"] #view svg polyline[style*="stroke:green"] {
+	fill: var(--cs-up) !important;
+	fill-opacity: .12 !important;
+	stroke: var(--cs-up) !important;
+	stroke-width: 1.6 !important;
+}
+
+[data-skin="console"] #view svg polyline[style*="stroke:red"] {
+	fill: var(--cs-third) !important;
+	fill-opacity: .12 !important;
+	stroke: var(--cs-third) !important;
+	stroke-width: 1.6 !important;
+}
+
+[data-skin="console"] #view strong[style*="solid blue"] {
+	border-bottom-color: var(--cs-down) !important;
+}
+
+[data-skin="console"] #view strong[style*="solid green"] {
+	border-bottom-color: var(--cs-up) !important;
+}
+
+[data-skin="console"] #view strong[style*="solid red"] {
+	border-bottom-color: var(--cs-third) !important;
+}
+
+/* ================================================================== *
+ *  The travel panel
+ * ================================================================== */
+
+[data-skin="console"] .travel-panel {
+	border-radius: 0;
+}
+
+[data-skin="console"] .travel-panel .tp-card {
+	border-radius: 12px;
+	box-shadow: var(--cs-shadow);
+}
+
+/* card titles: small capitals in the second ink, after a line icon */
+
+[data-skin="console"] .travel-panel .tp-card > .tp-card-head .tp-h2 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--tp-text-2);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 18px;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+}
+
+[data-skin="console"] .travel-panel [data-card] > .tp-card-head .tp-h2::before,
+[data-skin="console"] .travel-panel .tp-more > .tp-card-head .tp-h2::before {
+	content: "";
+	flex: none;
+	width: 16px;
+	height: 16px;
+	background: var(--tp-accent);
+	-webkit-mask: var(--cs-icon) center / contain no-repeat;
+	mask: var(--cs-icon) center / contain no-repeat;
+}
+
+[data-skin="console"] .travel-panel [data-card="login"] { --cs-icon: var(--cs-i-key); }
+[data-skin="console"] .travel-panel [data-card="exit"] { --cs-icon: var(--cs-i-globe); }
+[data-skin="console"] .travel-panel [data-card="uplinks"] { --cs-icon: var(--cs-i-tower); }
+[data-skin="console"] .travel-panel [data-card="devices"] { --cs-icon: var(--cs-i-devices); }
+[data-skin="console"] .travel-panel [data-card="wifi"] { --cs-icon: var(--cs-i-wifi); }
+[data-skin="console"] .travel-panel [data-card="mode"] { --cs-icon: var(--cs-i-map); }
+[data-skin="console"] .travel-panel .tp-more { --cs-icon: var(--cs-i-sliders); }
+
+[data-skin="console"] .travel-panel .tp-h3 {
+	color: var(--tp-text-2);
+	font-size: 11.5px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	text-transform: uppercase;
+}
+
+/* ---- the device card at the top: a tile with the router in it ------- */
+
+[data-skin="console"] .travel-panel .tp-head {
+	position: relative;
+	justify-content: center;
+	min-height: 76px;
+	padding-left: 72px;
+	background:
+		linear-gradient(120deg, color-mix(in srgb, var(--tp-accent) 9%, transparent), transparent 55%),
+		var(--tp-card);
+}
+
+[data-skin="console"] .travel-panel .tp-head::before,
+[data-skin="console"] .travel-panel .tp-head::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 14px;
+	width: 44px;
+	height: 44px;
+	margin-top: -22px;
+	border-radius: 12px;
+}
+
+[data-skin="console"] .travel-panel .tp-head::before {
+	background: var(--tp-accent-bg);
+	box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--tp-accent) 35%, transparent);
+}
+
+[data-skin="console"] .travel-panel .tp-head::after {
+	background: var(--tp-accent);
+	-webkit-mask: var(--cs-i-router) center / 24px no-repeat;
+	mask: var(--cs-i-router) center / 24px no-repeat;
+}
+
+[data-skin="console"] .travel-panel .tp-title {
+	font-size: 19px;
+	font-weight: 600;
+	letter-spacing: -.01em;
+}
+
+/* ---- status pills: a dot, and a halo on the live ones ---------------- */
+
+[data-skin="console"] .travel-panel .tp-pill {
+	gap: 6px;
+	padding: 3px 10px 3px 8px;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+[data-skin="console"] .travel-panel .tp-pill::before {
+	content: "";
+	flex: none;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+[data-skin="console"] .travel-panel .tp-pill.ok::before {
+	box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
+}
+
+/* ---- speed: a labelled card, arrows in the series colours, a grid --- */
+
+[data-skin="console"] .travel-panel .tp-speed {
+	position: relative;
+	padding-top: 44px;
+}
+
+[data-skin="console"] .travel-panel .tp-speed::before {
+	content: "";
+	position: absolute;
+	top: 15px;
+	left: 14px;
+	width: 16px;
+	height: 16px;
+	background: var(--tp-accent);
+	-webkit-mask: var(--cs-i-pulse) center / contain no-repeat;
+	mask: var(--cs-i-pulse) center / contain no-repeat;
+}
+
+[data-skin="console"] .travel-panel .tp-speed::after {
+	content: "Throughput";
+	position: absolute;
+	top: 14px;
+	left: 38px;
+	color: var(--tp-text-2);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 18px;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+}
+
+[data-skin="console"] .travel-panel .tp-speed-row {
+	gap: 4px 36px;
+}
+
+[data-skin="console"] .travel-panel .tp-speed .tp-k {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 11.5px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	text-transform: uppercase;
+}
+
+[data-skin="console"] .travel-panel .tp-speed .tp-k::before {
+	content: "";
+	flex: none;
+	width: 12px;
+	height: 12px;
+	background: var(--cs-down);
+	-webkit-mask: var(--cs-i-down) center / contain no-repeat;
+	mask: var(--cs-i-down) center / contain no-repeat;
+}
+
+[data-skin="console"] .travel-panel .tp-speed .tp-stat + .tp-stat .tp-k::before {
+	background: var(--cs-up);
+	-webkit-mask-image: var(--cs-i-up);
+	mask-image: var(--cs-i-up);
+}
+
+[data-skin="console"] .travel-panel .tp-big {
+	font-size: 30px;
+	font-weight: 600;
+	letter-spacing: -.02em;
+}
+
+[data-skin="console"] .travel-panel .tp-spark-box {
+	height: 108px;
+	border: .5px solid var(--tp-border);
+	border-radius: 8px;
+	background-color: var(--cs-plot);
+	background-image:
+		linear-gradient(to bottom, var(--cs-grid) 1px, transparent 1px),
+		linear-gradient(to right, var(--cs-grid) 1px, transparent 1px);
+	background-size: 100% 25%, 12.5% 100%;
+	background-position: 0 -1px, -1px 0;
+	overflow: hidden;
+}
+
+[data-skin="console"] .travel-panel .tp-spark {
+	height: 100%;
+}
+
+[data-skin="console"] .travel-panel .tp-spark-area {
+	fill: var(--cs-down);
+	opacity: .14;
+}
+
+[data-skin="console"] .travel-panel .tp-spark-down {
+	stroke: var(--cs-down);
+	stroke-width: 2;
+}
+
+[data-skin="console"] .travel-panel .tp-spark-up {
+	stroke: var(--cs-up);
+	stroke-width: 1.6;
+	opacity: 1;
+}
+
+/* ---- rows: square tiles instead of circles --------------------------- */
+
+[data-skin="console"] .travel-panel .tp-row-icon,
+[data-skin="console"] .travel-panel .tp-avatar {
+	border-radius: 10px;
+}
+
+[data-skin="console"] .travel-panel .tp-row-icon {
+	background: var(--tp-accent-bg);
+	color: var(--tp-accent);
+}
+
+[data-skin="console"] .travel-panel .tp-row.is-away .tp-row-icon {
+	background: var(--tp-idle-bg);
+	color: var(--tp-text-2);
+}
+
+[data-skin="console"] .travel-panel .tp-kv-v,
+[data-skin="console"] .travel-panel .tp-row-sub {
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- controls: tighter corners, a ring on focus ---------------------- */
+
+[data-skin="console"] .travel-panel .tp-btn,
+[data-skin="console"] .travel-panel a.tp-btn,
+[data-skin="console"] .travel-panel .tp-seg-btn,
+[data-skin="console"] .travel-panel .tp-kind-btn,
+[data-skin="console"] .travel-panel .tp-input,
+[data-skin="console"] .travel-panel .tp-select,
+[data-skin="console"] .travel-panel .tp-textarea {
+	border-radius: 8px;
+}
+
+[data-skin="console"] .travel-panel .tp-btn.sm {
+	border-radius: 7px;
+}
+
+[data-skin="console"] .travel-panel .tp-btn.primary,
+[data-skin="console"] .travel-panel a.tp-btn.primary {
+	font-weight: 600;
+}
+
+[data-skin="console"] .travel-panel .tp-input:focus,
+[data-skin="console"] .travel-panel .tp-select:focus,
+[data-skin="console"] .travel-panel .tp-textarea:focus {
+	box-shadow: 0 0 0 3px var(--tp-accent-bg);
+}
+
+/* a switch that is on keeps a white thumb, as consoles do */
+[data-skin="console"] .travel-panel .tp-switch-ctl.is-on .tp-switch-thumb {
+	background: #ffffff;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+
+/* ---- notes, banners, suggestions: a bar in their own colour ---------- */
+
+[data-skin="console"] .travel-panel .tp-note.warn,
+[data-skin="console"] .travel-panel .tp-banner,
+[data-skin="console"] .travel-panel .tp-suggest {
+	box-shadow: inset 3px 0 0 var(--tp-warn-text);
+}
+
+[data-skin="console"] .travel-panel .tp-note.ok {
+	box-shadow: inset 3px 0 0 var(--tp-ok-text);
+}
+
+[data-skin="console"] .travel-panel .tp-note.info {
+	box-shadow: inset 3px 0 0 var(--tp-border-2);
+}
+
+/* ---- sheets ------------------------------------------------------------ */
+
+[data-skin="console"] .travel-panel .tp-sheet {
+	border: .5px solid var(--tp-border-2);
+	box-shadow: var(--cs-pop);
+}
+
+/* ---- laptop width: a dashboard instead of one phone column -----------
+ * From 980 px (a small laptop window, a tablet held sideways).
+ * The device strip, the throughput graph and More run across; the other
+ * cards pair up in DOM order (login and exit, sources and devices, Wi-Fi and
+ * mode), each pair as tall as its taller card. Sheets hang off .travel-panel,
+ * not .tp-wrap, so they are not grid items; a hidden card leaves at most one
+ * empty cell at the end. Phones keep the single column. */
+
+@media (min-width: 980px) {
+	[data-skin="console"] .travel-panel .tp-wrap {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		align-items: stretch;
+		gap: 16px;
+		max-width: 1160px;
+	}
+
+	[data-skin="console"] .travel-panel .tp-wrap > .tp-banner,
+	[data-skin="console"] .travel-panel .tp-head,
+	[data-skin="console"] .travel-panel .tp-suggest,
+	[data-skin="console"] .travel-panel .tp-speed,
+	[data-skin="console"] .travel-panel .tp-more {
+		grid-column: 1 / -1;
+	}
+
+	[data-skin="console"] .travel-panel .tp-spark-box {
+		height: 156px;
+	}
+}
+
+/* ==================================================================
+ *  Glow (2026-10-08, Corey: "a little gradient here and there like UniFi").
+ *  Loosens principle "Calm" for surfaces only, never for controls: a richer wash at the top of the page,
+ *  the header ending in an accent hairline that fades out at both ends, cards lit from their top edge with
+ *  an accent glow whose spot changes from card to card, and a brighter glow behind the device card at the
+ *  top (UniFi's hero card).
+ *  Both modes carry it since 2026-10-09: dark glows lighter than its slate, Chambray glows a deeper blue
+ *  than its tint. Nested sections stay flat (one card, not a card in a card). Delete this block to go back.
+ * ================================================================== */
+
+[data-skin="console"][data-darkmode="true"] body {
+	background:
+		radial-gradient(800px 380px at 12% -120px, rgba(79, 211, 224, .12), transparent 70%) no-repeat,
+		radial-gradient(1300px 560px at 62% -240px, rgba(75, 155, 255, .24), transparent 70%) no-repeat,
+		var(--cs-page);
+}
+
+[data-skin="console"]:not([data-darkmode="true"]) body {
+	background:
+		radial-gradient(800px 380px at 12% -120px, rgba(63, 200, 216, .17), transparent 70%) no-repeat,
+		radial-gradient(1300px 560px at 62% -240px, rgba(26, 111, 224, .24), transparent 70%) no-repeat,
+		linear-gradient(180deg, #c0d5ea 0, var(--cs-page) 460px) no-repeat,
+		var(--cs-page);
+}
+
+/* the travel panel painted the page colour over the body, which hid the wash on its page in both modes */
+[data-skin="console"] .travel-panel {
+	background: transparent;
+}
+
+/* Chambray's tabs: the base layer starts the tab shelf and the tab faces from pure white
+   (--background-color-high, which also colours text on buttons, so it stays white). On a tinted page that
+   white was a stripe beside the last tab, so tabs start from the card colour instead. */
+[data-skin="console"]:not([data-darkmode="true"]) :is(.tabs, .cbi-tabmenu) {
+	--tab-bar-background-color: var(--cs-card);
+	--tab-inactive-hover-background-color: var(--cs-card);
+	--tab-active-background-color: var(--cs-card);
+}
+
+@media screen and (max-width: 800px) {
+	[data-skin="console"]:not([data-darkmode="true"]) :is(.tabs, .cbi-tabmenu) {
+		background-image: linear-gradient(var(--cs-card) 20%, var(--border-color-medium) 100%);
+	}
+}
+
+/* the header is sticky, so the hairline is a background layer, not a positioned pseudo-element */
+[data-skin="console"] header {
+	background:
+		linear-gradient(90deg, transparent 5%, color-mix(in srgb, var(--cs-accent) 70%, transparent) 35%,
+			color-mix(in srgb, #4fd3e0 60%, transparent) 65%, transparent 95%) bottom / 100% 1px no-repeat,
+		var(--cs-card);
+}
+
+[data-skin="console"][data-darkmode="true"] .cbi-section,
+[data-skin="console"][data-darkmode="true"] .cbi-map > fieldset,
+[data-skin="console"][data-darkmode="true"] .cbi-tblsection,
+[data-skin="console"][data-darkmode="true"] .travel-panel .tp-card {
+	--cs-glow-at: 0% 0%;
+	background-image:
+		radial-gradient(520px 220px at var(--cs-glow-at), rgba(75, 155, 255, .14), transparent 70%),
+		linear-gradient(180deg, rgba(255, 255, 255, .045), transparent 160px);
+	box-shadow: var(--cs-shadow), inset 0 1px 0 rgba(140, 190, 255, .12);
+}
+
+[data-skin="console"]:not([data-darkmode="true"]) .cbi-section,
+[data-skin="console"]:not([data-darkmode="true"]) .cbi-map > fieldset,
+[data-skin="console"]:not([data-darkmode="true"]) .cbi-tblsection,
+[data-skin="console"]:not([data-darkmode="true"]) .travel-panel .tp-card {
+	--cs-glow-at: 0% 0%;
+	background-image: radial-gradient(560px 240px at var(--cs-glow-at), rgba(26, 111, 224, .13), transparent 70%);
+	box-shadow: var(--cs-shadow), 0 6px 20px rgba(26, 111, 224, .08), inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+
+/* where the glow sits (Corey: "a bit random, not all upper left"): a five-step cycle over each card's place
+ * among its siblings, so neighbours never glow from the same spot; places 1, 6, 11 keep the top left */
+[data-skin="console"] :is(.cbi-section, .cbi-map > fieldset, .cbi-tblsection, .travel-panel .tp-card):nth-child(5n+2) {
+	--cs-glow-at: 100% 0%;
+}
+
+[data-skin="console"] :is(.cbi-section, .cbi-map > fieldset, .cbi-tblsection, .travel-panel .tp-card):nth-child(5n+3) {
+	--cs-glow-at: 20% 100%;
+}
+
+[data-skin="console"] :is(.cbi-section, .cbi-map > fieldset, .cbi-tblsection, .travel-panel .tp-card):nth-child(5n+4) {
+	--cs-glow-at: 70% 0%;
+}
+
+[data-skin="console"] :is(.cbi-section, .cbi-map > fieldset, .cbi-tblsection, .travel-panel .tp-card):nth-child(5n) {
+	--cs-glow-at: 100% 100%;
+}
+
+/* the device card at the top: a brighter glow, aquamarine into blue, behind the router tile */
+[data-skin="console"]:not([data-darkmode="true"]) .travel-panel .tp-head {
+	background:
+		radial-gradient(480px 200px at 8% 50%, rgba(63, 200, 216, .17), transparent 70%),
+		radial-gradient(700px 260px at 55% -40%, rgba(26, 111, 224, .15), transparent 70%),
+		var(--tp-card);
+}
+
+[data-skin="console"][data-darkmode="true"] .travel-panel .tp-head {
+	background:
+		radial-gradient(480px 200px at 8% 50%, rgba(79, 211, 224, .16), transparent 70%),
+		radial-gradient(700px 260px at 55% -40%, rgba(75, 155, 255, .20), transparent 70%),
+		var(--tp-card);
+	box-shadow: var(--cs-shadow), inset 0 1px 0 rgba(140, 190, 255, .16);
+}
+
+[data-skin="console"] .cbi-section .cbi-section,
+[data-skin="console"] .cbi-section .cbi-tblsection,
+[data-skin="console"] .cbi-value > .cbi-section,
+[data-skin="console"] .cbi-value > .cbi-tblsection,
+[data-skin="console"] .cbi-tab .cbi-section,
+[data-skin="console"] .cbi-section-node .cbi-section,
+[data-skin="console"] #modal_overlay .cbi-section,
+[data-skin="console"] #modal_overlay .cbi-map > fieldset {
+	background-image: none;
+	box-shadow: none;
+}

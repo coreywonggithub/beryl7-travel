@@ -1,0 +1,29 @@
+#!/usr/bin/ucode
+'use strict';
+// Sandbox only: stands in for nlbwmon's client (`nlbw`, which needs the daemon
+// and conntrack). It answers what LuCI's Bandwidth Monitor page and the travel
+// panel ask:  nlbw -c list | commit | json|csv [-g col,col] [-o order] [-t period] [-s delim]
+import { nlbw_periods, nlbw_rows } from 'sandbox';
+
+let a = ARGV, cmd = null, group = null, order = null, period = null, delim = ',';
+for (let i = 0; i < length(a); i++) {
+	switch (a[i]) {
+	case '-c': cmd = a[++i]; break;
+	case '-g': group = a[++i]; break;
+	case '-o': order = a[++i]; break;
+	case '-t': period = a[++i]; break;
+	case '-s': delim = a[++i]; break;
+	}
+	if (index(a[i], '-s') == 0 && length(a[i]) == 3) delim = substr(a[i], 2);
+}
+if (cmd == 'list') {
+	for (let p in nlbw_periods()) printf('%s\n', p);
+}
+else if (cmd == 'json' || cmd == 'csv') {
+	let r = nlbw_rows(group ? split(group, ',') : [], order, period);
+	if (cmd == 'json') printf('%J\n', r);
+	else {
+		printf('%s\n', join(delim, r.columns));
+		for (let row in r.data) printf('%s\n', join(delim, map(row, (v) => '' + v)));
+	}
+}

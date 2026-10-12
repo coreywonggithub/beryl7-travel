@@ -1,0 +1,23 @@
+{
+	"luci-app-travel": {
+		"description": "Grant access to the travel panel",
+		"read": {
+			"ubus": {
+				"travel": [ "status", "wifi_scan", "wifi_saved" ],
+				"rc": [ "list" ],
+				"luci.nikki": [ "profile" ]
+			},
+			"uci": [ "nikki" ]
+		},
+		"write": {
+			"ubus": {
+				"travel": [
+					"set_mode", "set_switch_map", "wifi_join", "wifi_forget", "login_get", "login_set",
+					"set_ap", "set_channel", "mac", "device_block", "device_rename", "device_kind",
+					"tailscale_login", "tailscale_logout", "wg_import", "wg_delete",
+					"uplink_order", "set_hide_router", "set_region"
+				]
+			}
+		}
+	}
+}

@@ -1,0 +1,129 @@
+#!/bin/sh
+# First boot: shape stock OpenWrt 25.12 into the travel router the panel
+# expects. Every step is idempotent and leaves your own settings alone, so it
+# is also safe when the package is installed on a router already in use.
+
+zone_named() {
+	uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)\.name='$1'$/\1/p" | head -n1
+}
+
+add_zone() {	# add_zone <name> <network or ""> <input>
+	local z
+	z="$(zone_named "$1")"
+	[ -n "$z" ] && return 0
+	z="$(uci add firewall zone)"
+	uci set "firewall.$z.name=$1"
+	[ -n "$2" ] && uci add_list "firewall.$z.network=$2"
+	uci set "firewall.$z.input=$3"
+	uci set "firewall.$z.output=ACCEPT"
+	uci set "firewall.$z.forward=REJECT"
+	uci set "firewall.$z.masq=1"
+	uci set "firewall.$z.mtu_fix=1"
+}
+
+add_forwarding() {	# add_forwarding <src> <dest>
+	local f
+	for f in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
+		[ "$(uci -q get "firewall.$f.src")" = "$1" ] &&
+			[ "$(uci -q get "firewall.$f.dest")" = "$2" ] && return 0
+	done
+	f="$(uci add firewall forwarding)"
+	uci set "firewall.$f.src=$1"
+	uci set "firewall.$f.dest=$2"
+}
+
+# --- LAN: a subnet hotels rarely use, if it is still OpenWrt's default ------
+if [ "$(uci -q get network.lan.ipaddr)" = "192.168.1.1/24" ]; then
+	uci -q delete network.lan.ipaddr
+	uci add_list network.lan.ipaddr='172.31.77.1/24'
+fi
+# No IPv6 handed to devices: it would bypass the tunnels, and hotels rarely
+# offer it anyway
+uci -q delete network.lan.ip6assign
+uci set dhcp.lan.ra='disabled'
+uci set dhcp.lan.dhcpv6='disabled'
+uci set dhcp.lan.ndp='disabled'
+
+# --- internet sources, in order: Ethernet, Wi-Fi uplink, phone --------------
+[ -n "$(uci -q get network.wan.metric)" ] || uci set network.wan.metric='10'
+if [ -z "$(uci -q get network.trm_wwan)" ]; then
+	uci set network.trm_wwan=interface
+	uci set network.trm_wwan.proto='dhcp'
+	uci set network.trm_wwan.metric='20'
+fi
+wan_zone="$(zone_named wan)"
+if [ -n "$wan_zone" ]; then
+	case " $(uci -q get "firewall.$wan_zone.network") " in
+	*" trm_wwan "*) ;;
+	*) uci add_list "firewall.$wan_zone.network=trm_wwan" ;;
+	esac
+fi
+
+# --- travelmate: joins hotel Wi-Fi and spots login pages ---------------------
+uci set travelmate.global.trm_enabled='1'
+uci set travelmate.global.trm_iface='trm_wwan'
+uci set travelmate.global.trm_captive='1'
+# 0 (Corey, 2026-10-05): a Wi-Fi with no internet stays connected, and the panel
+# says so. With 1 it counted as failed and was dropped and redialled; on the
+# hardware a login page it misread became an endless connect/drop loop that took
+# the router's own Wi-Fi down each time, so nobody could reach the panel to log in.
+# The price: no automatic fallback to the phone when hotel Wi-Fi has no internet.
+uci set travelmate.global.trm_netcheck='0'
+uci set travelmate.global.trm_maxretry='0'
+# no background scans while connected: they stall traffic on this driver
+uci set travelmate.global.trm_proactive='0'
+uci set travelmate.global.trm_timeout='30'
+uci set travelmate.global.trm_maxwait='45'
+# 30 (2026-10-12): travelmate starts this long after an interface comes up. With the
+# default 5, in exit-node mode it started before the saved Wi-Fi had its address, took it
+# for down, switched every uplink off, reloaded and bounced it: two drops per boot, and
+# before image v10 a hostapd crash on top (docs/hostapd-crash.md). The price: at a network
+# the router has not saved, the first join starts about 40 s later.
+uci set travelmate.global.trm_triggerdelay='30'
+
+# --- Tailscale: its own zone; it never touches the firewall itself ---------
+if [ -z "$(uci -q get network.tailscale)" ]; then
+	uci set network.tailscale=interface
+	uci set network.tailscale.proto='none'
+	uci set network.tailscale.device='tailscale0'
+fi
+add_zone tailscale tailscale ACCEPT
+add_forwarding lan tailscale
+/etc/init.d/tailscale enable 2>/dev/null
+
+# --- UniFi WireGuard profiles land in this zone (see wg_import) -------------
+add_zone vpn "" REJECT
+add_forwarding lan vpn
+
+# --- "look like one device": TTL rules at the end of mangle_postrouting ----
+if [ -z "$(uci -q get firewall.travel_ttl)" ]; then
+	uci set firewall.travel_ttl=include
+	uci set firewall.travel_ttl.type='nftables'
+	uci set firewall.travel_ttl.path='/etc/travel/ttl.nft'
+	uci set firewall.travel_ttl.position='chain-append'
+	uci set firewall.travel_ttl.chain='mangle_postrouting'
+fi
+
+# --- per-device usage, counted per day, a month kept -----------------------
+if [ -n "$(uci -q get nlbwmon.@nlbwmon[0])" ]; then
+	uci set nlbwmon.@nlbwmon[0].database_interval='2026-01-01/1'
+	uci set nlbwmon.@nlbwmon[0].database_generations='35'
+fi
+
+# --- keep iPhone tethering pairings across firmware upgrades ---------------
+grep -qx '/etc/lockdown/' /etc/sysupgrade.conf 2>/dev/null ||
+	echo '/etc/lockdown/' >>/etc/sysupgrade.conf
+
+# --- rpcd: the panel's Wi-Fi search took 20 s on the hardware (2026-10-05);
+# give its scripts 60 s instead of 30, to match the panel's own limit for it
+if [ -n "$(uci -q get rpcd.@rpcd[0])" ]; then
+	uci set rpcd.@rpcd[0].timeout='60'
+	uci commit rpcd
+fi
+
+uci commit network
+uci commit dhcp
+uci commit firewall
+uci commit travelmate
+uci -q commit nlbwmon
+exit 0

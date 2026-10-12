@@ -1,0 +1,5 @@
+# Beryl 7 build. Deliberately NOT listed: OpenWrt's target feed
+# (targets/mediatek/filogic/packages): its kernel modules would replace the
+# patched Wi-Fi driver. Kernel and drivers change only by flashing a new image.
+# Our own feed (travel panel, nikki), once it is hosted on the tailnet:
+# https://<host>.ts.net/beryl7/aarch64_cortex-a53/packages.adb

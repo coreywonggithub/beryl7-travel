@@ -1,0 +1,11 @@
+#!/bin/sh
+# When an internet source comes up: refresh the way out (DNS rule for the
+# login-page probe, WireGuard endpoint route), and check the Wi-Fi country.
+[ "$ACTION" = ifup ] || exit 0
+case "$INTERFACE" in
+wan|trm_wwan|tether_*)
+	/usr/libexec/travel/egress apply uplink >/dev/null 2>&1 &
+	[ "$INTERFACE" = trm_wwan ] && /usr/libexec/travel/country >/dev/null 2>&1 &
+	;;
+esac
+exit 0

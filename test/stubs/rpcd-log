@@ -1,0 +1,16 @@
+#!/usr/bin/ucode
+// Sandbox only: logd's "log" object, which the System Log page (and travelmate's
+// log view) read. The entries are in sandbox.uc and always look a few minutes old.
+import { serve, log_entries } from 'sandbox';
+
+serve({
+	read: {
+		args: { lines: 'int', stream: 'bool', oneshot: 'bool' },
+		call: (a) => {
+			let all = log_entries();
+			let n = a.lines ?? 0;
+			return { log: (n > 0 && length(all) > n) ? slice(all, length(all) - n) : all };
+		}
+	},
+	write: { args: { event: 'str' }, call: () => ({}) }
+});

@@ -1,0 +1,19 @@
+{
+	"model": {
+		"id": "glinet,gl-mt3600be",
+		"name": "GL.iNet GL-MT3600BE"
+	},
+	"system": {
+		"label_macaddr": "94:83:c4:0b:7e:80"
+	},
+	"network": {
+		"lan": {
+			"ports": [ "eth1" ],
+			"protocol": "static"
+		},
+		"wan": {
+			"device": "eth0",
+			"protocol": "dhcp"
+		}
+	}
+}

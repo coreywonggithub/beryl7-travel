@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stand-in for iw in the sandbox (2026-10-06): the router's interface list and a scan list from
+# test/fixtures/iw; each scan is logged to /tmp/calls.log, and fails as busy while /tmp/iw-busy exists.
+F=/test-fixtures/iw
+case "$*" in
+dev) cat "$F/dev.txt" ;;
+"dev "*" scan dump") cat "$F/scan-dump.txt" ;;
+"dev "*" scan"*)
+	echo "iw $*" >>/tmp/calls.log
+	if [ -e /tmp/iw-busy ]; then
+		echo "command failed: Device or resource busy (-16)" >&2
+		exit 240
+	fi
+	;;
+*) exit 1 ;;
+esac
+exit 0

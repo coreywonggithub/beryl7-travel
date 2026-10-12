@@ -1,0 +1,31 @@
+#!/usr/bin/ucode
+// Sandbox only: procd's "service" object. The DHCP page reads the names of the
+// running services; the rest of the answer is what procd reports per instance.
+import { serve } from 'sandbox';
+
+function svc(name, pid, command) {
+	return { instances: { instance1: { running: true, pid, command } } };
+}
+
+serve({
+	list: {
+		args: { name: 'str', verbose: 'bool' },
+		call: (a) => {
+			let all = {
+				dnsmasq: { instances: { cfg01411c: { running: true, pid: 1893, command: [ '/usr/sbin/dnsmasq', '-C', '/var/etc/dnsmasq.conf.cfg01411c', '-k', '-x', '/var/run/dnsmasq/dnsmasq.cfg01411c.pid' ] } } },
+				odhcpd: svc('odhcpd', 1493, [ '/usr/sbin/odhcpd' ]),
+				dropbear: { instances: { instance1: { running: true, pid: 2211, command: [ '/usr/sbin/dropbear', '-F', '-P', '/var/run/dropbear.1.pid', '-p', '22', '-K', '300', '-T', '3' ] } } },
+				uhttpd: { instances: { main: { running: true, pid: 2318, command: [ '/usr/sbin/uhttpd', '-f', '-h', '/www', '-r', 'beryl7', '-x', '/cgi-bin', '-u', '/ubus' ] } } },
+				rpcd: svc('rpcd', 1402, [ '/sbin/rpcd', '-s', '/var/run/ubus/ubus.sock', '-t', '30' ]),
+				hostapd: svc('hostapd', 1985, [ '/usr/sbin/hostapd', '-s', '-g', '/var/run/hostapd/global' ]),
+				wpa_supplicant: svc('wpa_supplicant', 2988, [ '/usr/sbin/wpa_supplicant', '-n', '-s', '-g', '/var/run/wpa_supplicant/global' ]),
+				sysntpd: svc('sysntpd', 3122, [ '/usr/sbin/ntpd', '-n', '-N', '-l' ]),
+				tailscale: svc('tailscale', 2404, [ '/usr/sbin/tailscaled', '--state=/etc/tailscale/tailscaled.state' ]),
+				travelmate: svc('travelmate', 2652, [ '/usr/bin/travelmate-service.sh', 'start' ]),
+				nlbwmon: svc('nlbwmon', 3380, [ '/usr/sbin/nlbwmon' ]),
+				log: svc('log', 133, [ '/sbin/logd', '-S', '64' ])
+			};
+			return a.name ? (all[a.name] ? { [a.name]: all[a.name] } : {}) : all;
+		}
+	}
+});

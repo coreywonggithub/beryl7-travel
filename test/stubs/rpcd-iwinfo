@@ -1,0 +1,16 @@
+#!/usr/bin/ucode
+// Sandbox only: replaces rpcd's C plugin "iwinfo", which needs a real
+// nl80211 device. Radios, stations and the neighbourhood come from sandbox.uc.
+import { serve, iwinfo_info, iwinfo_devices, iwinfo_assoc, iwinfo_freqlist, iwinfo_txpowers, iwinfo_countries, iwinfo_scan } from 'sandbox';
+
+serve({
+	devices: { call: () => ({ devices: iwinfo_devices() }) },
+	info: { args: { device: 'str' }, call: (a) => iwinfo_info(a.device) ?? {} },
+	scan: { args: { device: 'str' }, call: (a) => ({ results: iwinfo_scan(a.device) }) },
+	assoclist: { args: { device: 'str', mac: 'str' }, call: (a) => ({ results: iwinfo_assoc(a.device) }) },
+	freqlist: { args: { device: 'str' }, call: (a) => ({ results: iwinfo_freqlist(a.device) }) },
+	txpowerlist: { args: { device: 'str' }, call: (a) => ({ results: iwinfo_txpowers(a.device) }) },
+	countrylist: { args: { device: 'str' }, call: (a) => ({ results: iwinfo_countries() }) },
+	survey: { args: { device: 'str' }, call: (a) => ({ results: [] }) },
+	phyname: { args: { section: 'str' }, call: (a) => ({ phyname: 'phy0' }) }
+});

@@ -1,0 +1,23 @@
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth1'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	list ipaddr '192.168.1.1/24'
+	option ip6assign '60'
+
+config interface 'wan'
+	option device 'eth0'
+	option proto 'dhcp'
+
+config interface 'wan6'
+	option device 'eth0'
+	option proto 'dhcpv6'

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Travel panel preview</title>
+<link rel="icon" href="data:,">
+<style>
+/*
+ * Stand-in for a LuCI theme. It is deliberately opinionated (global rules for
+ * buttons, inputs, headings, links, lists) in the same way the Bootstrap theme
+ * is, so that any style that leaks into or out of the panel shows up here.
+ * None of this belongs to the panel.
+ */
+*, *::before, *::after { margin: 0; padding: 0; border: 0; box-sizing: border-box; }
+html { font-size: 100%; height: 100%; }
+body { min-height: 100%; padding: 5px; background: #fff; color: #404040; font: 13px/18px "Helvetica Neue", Helvetica, Arial, sans-serif; }
+a { color: #0069d6; text-decoration: none; line-height: inherit; }
+a:hover { color: #00438a; text-decoration: underline; }
+p { margin-bottom: 9px; font-size: 13px; line-height: 18px; }
+h2 { margin-bottom: 9px; font-size: 24px; line-height: 36px; font-weight: bold; }
+h3 { margin-bottom: 9px; font-size: 18px; line-height: 27px; font-weight: bold; }
+h4 { margin-bottom: 9px; font-size: 14px; line-height: 18px; font-weight: bold; text-transform: uppercase; }
+ul, ol { list-style: none; }
+button, input, select, option, textarea { margin: 0; font-size: 100%; line-height: 2em; vertical-align: baseline; }
+button { cursor: pointer; -webkit-appearance: button; word-break: break-all; padding: 0 14px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; color: #404040; text-transform: uppercase; letter-spacing: .5px; }
+button[disabled] { opacity: .7; }
+input, textarea, select { display: inline-block; width: 210px; height: 30px; padding: 4px; background: #fff; color: #404040; font-size: 13px; line-height: 18px; border: 1px solid #ccc; border-radius: 3px; }
+textarea { font-family: monospace; height: auto; }
+label { font-size: 13px; font-weight: bold; color: #404040; }
+label, input, button, select { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: normal; }
+svg { fill: #404040; stroke: #404040; }
+.spinning { padding: 4px 8px; }
+.alert-message { margin: 6px 0; padding: 8px 12px; border: 1px solid #c00; border-radius: 3px; background: #fdd; color: #900; display: flex; gap: 12px; align-items: flex-start; }
+.alert-message pre { white-space: pre-wrap; }
+#modal_overlay { display: none; }
+body.modal-overlay-active #modal_overlay { display: block; position: fixed; inset: 0; z-index: 900; background: rgba(0, 0, 0, .7); }
+#modal_overlay .modal { margin: 10vh auto; max-width: 480px; padding: 16px; background: #fff; border-radius: 3px; }
+
+html[data-darkmode="true"] body { background: #222; color: #ddd; }
+html[data-darkmode="true"] a { color: #4da1c0; }
+html[data-darkmode="true"] button, html[data-darkmode="true"] input, html[data-darkmode="true"] select, html[data-darkmode="true"] textarea { background: #333; color: #ddd; border-color: #555; }
+html[data-darkmode="true"] label { color: #ddd; }
+html[data-darkmode="true"] svg { fill: #ddd; stroke: #ddd; }
+html[data-darkmode="true"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+	html:not([data-darkmode="false"]) body { background: #222; color: #ddd; }
+	html:not([data-darkmode="false"]) a { color: #4da1c0; }
+	html:not([data-darkmode="false"]) button, html:not([data-darkmode="false"]) input, html:not([data-darkmode="false"]) select, html:not([data-darkmode="false"]) textarea { background: #333; color: #ddd; border-color: #555; }
+	html:not([data-darkmode="false"]) label { color: #ddd; }
+	html:not([data-darkmode="false"]) svg { fill: #ddd; stroke: #ddd; }
+}
+
+/* the frame around the view, like LuCI's header + main content */
+.stand-in-header { padding: 8px 12px; margin-bottom: 8px; background: #4a4a4a; color: #fff; font-size: 13px; }
+.stand-in-header span { color: #ccc; }
+#maincontent { max-width: 1180px; margin: 0 auto; }
+#maincontent.phone { max-width: 390px; outline: 1px dashed #999; outline-offset: 4px; }
+
+/* the "simulate" bar (harness only, outside the panel) */
+.harness { max-width: 1180px; margin: 0 auto 10px; padding: 8px 10px; border: 1px dashed #999; border-radius: 3px; }
+.harness summary { cursor: pointer; font-weight: bold; }
+.harness .note { margin: 6px 0 8px; color: #777; }
+.harness .row { display: flex; flex-wrap: wrap; gap: 6px; }
+.harness button { padding: 0 10px; font-size: 12px; line-height: 28px; text-transform: none; letter-spacing: 0; }
+.harness button[aria-pressed="true"] { outline: 2px solid #0a6; outline-offset: -2px; }
+.harness .toast { min-height: 18px; margin-top: 8px; color: #0a6; font-family: monospace; font-size: 12px; word-break: break-all; }
+
+.shim-card { max-width: 640px; margin: 24px auto; padding: 16px; border: 1px solid #ccc; border-radius: 3px; }
+.shim-card pre { margin: 8px 0; padding: 8px; background: #f4f4f4; color: #222; font-size: 12px; white-space: pre-wrap; }
+.shim-error { color: #b00; }
+</style>
+</head>
+<body>
+
+<div class="stand-in-header">LuCI stand-in <span>(simulated router, not the real theme)</span></div>
+
+<details class="harness" open>
+	<summary>Simulate</summary>
+	<p class="note">Nothing on this page talks to a real device. The panel polls the mock every 5 seconds; these buttons also ask it to refresh right away.</p>
+	<div class="row">
+		<button type="button" id="b-portal">Wi-Fi login page appears</button>
+		<button type="button" id="b-switch">Flip switch</button>
+		<button type="button" id="b-wifi">Connected Wi-Fi drops</button>
+		<button type="button" id="b-ts">Tailscale logs out</button>
+		<button type="button" id="b-dark">Dark mode on</button>
+		<button type="button" id="b-cn" aria-pressed="false">Router sees China</button>
+		<button type="button" id="b-de" aria-pressed="true">Router sees Germany</button>
+		<button type="button" id="b-off">Router unreachable</button>
+		<button type="button" id="b-phone">Phone width</button>
+		<button type="button" id="b-reset">Reset mock</button>
+	</div>
+	<div class="toast" id="toast" role="status"></div>
+</details>
+
+<div id="maincontent"><div id="view"></div></div>
+
+<script src="luci-shim.js"></script>
+<script>
+(function() {
+	'use strict';
+
+	var M = window.TravelMock;
+	var $ = function(id) { return document.getElementById(id); };
+	var root = document.documentElement;
+	var toastTimer = null;
+
+	function toast(msg) {
+		$('toast').textContent = msg;
+		window.clearTimeout(toastTimer);
+		toastTimer = window.setTimeout(function() { $('toast').textContent = ''; }, 8000);
+	}
+
+	function nudge() {
+		var v = window.__travelView;
+
+		if (v && typeof(v.refresh) == 'function')
+			v.refresh();
+	}
+
+	function paint() {
+		var s = M.sim.state();
+
+		$('b-portal').textContent = s.portal ? 'Wi-Fi login page clears' : 'Wi-Fi login page appears';
+		$('b-switch').textContent = 'Flip switch (now ' + (s.position === 'on' ? 'on' : 'off') + ')';
+		$('b-wifi').textContent = s.uplinkWifi ? 'Connected Wi-Fi drops' : 'Connected Wi-Fi returns';
+		$('b-ts').textContent = s.tailscale ? 'Tailscale logs out' : 'Tailscale logs in';
+		$('b-dark').textContent = (root.getAttribute('data-darkmode') === 'true') ? 'Dark mode off' : 'Dark mode on';
+		$('b-off').textContent = s.unreachable ? 'Router reachable again' : 'Router unreachable';
+		$('b-cn').setAttribute('aria-pressed', s.detected === 'CN' ? 'true' : 'false');
+		$('b-de').setAttribute('aria-pressed', s.detected === 'DE' ? 'true' : 'false');
+		$('b-phone').textContent = $('maincontent').classList.contains('phone') ? 'Full width' : 'Phone width';
+	}
+
+	function wire(id, fn) {
+		$(id).addEventListener('click', function() {
+			fn();
+			paint();
+			nudge();
+		});
+	}
+
+	wire('b-portal', function() { M.sim.togglePortal(); });
+	wire('b-switch', function() { M.sim.flipSwitch(); });
+	wire('b-wifi', function() { M.sim.toggleUplinkWifi(); });
+	wire('b-ts', function() { M.sim.toggleTailscale(); });
+	wire('b-off', function() { M.sim.toggleUnreachable(); });
+	wire('b-cn', function() { M.sim.setDetected('CN'); });
+	wire('b-de', function() { M.sim.setDetected('DE'); });
+	wire('b-reset', function() {
+		M.sim.reset();
+
+		/* "Not now" on the country suggestion is remembered by the panel; forget it so the banners can be seen again. */
+		try {
+			Object.keys(window.localStorage).filter(function(k) { return k.indexOf('travel.dismiss.') === 0; }).forEach(function(k) { window.localStorage.removeItem(k); });
+		}
+		catch (e) {}
+
+		if (window.__travelView && window.__travelView.ux)
+			window.__travelView.ux.dismissed = {};
+
+		toast('Mock reset. The panel keeps its own open forms, like a real router would not.');
+	});
+	wire('b-dark', function() {
+		root.setAttribute('data-darkmode', root.getAttribute('data-darkmode') === 'true' ? 'false' : 'true');
+	});
+	wire('b-phone', function() { $('maincontent').classList.toggle('phone'); });
+
+	/* Links that would leave the preview are reported instead of followed. */
+	document.addEventListener('click', function(ev) {
+		var a = ev.target.closest && ev.target.closest('a[href]');
+
+		if (!a)
+			return;
+
+		var href = a.getAttribute('href');
+
+		if (/^\/cgi-bin\/luci/.test(href)) {
+			ev.preventDefault();
+			toast('In LuCI this opens ' + href);
+		}
+		else if (/^https?:/i.test(href)) {
+			ev.preventDefault();
+			toast('Would open in a new tab (target=' + a.getAttribute('target') + ', rel=' + a.getAttribute('rel') + '): ' + href);
+		}
+	});
+
+	paint();
+})();
+</script>
+</body>
+</html>

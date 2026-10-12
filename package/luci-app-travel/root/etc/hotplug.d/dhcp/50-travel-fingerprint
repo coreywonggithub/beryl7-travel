@@ -1,0 +1,30 @@
+#!/bin/sh
+# How each device asked for its address, its DHCP "fingerprint": the vendor
+# class it announces (Android says "android-dhcp-14", Windows "MSFT 5.0",
+# BusyBox gadgets "udhcp ...") and the options it requests, whose list tells
+# an iPhone from a Mac. status.uc turns it into a system name for the panel's
+# device icons. Kept in RAM only; after a reboot it is learnt again at each
+# device's next renewal (dnsmasq calls this on renewals too, see
+# uci-defaults/81_travel_fingerprint). dnsmasq only runs DHCP hooks when one
+# exists in /etc/hotplug.d/dhcp, which this file is.
+
+[ "$ACTION" = add ] || [ "$ACTION" = update ] || exit 0
+
+mac="$(printf '%s' "$MACADDR" | tr 'A-F' 'a-f')"
+case "$mac" in
+	[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+	*) exit 0 ;;
+esac
+
+# what a device sends is data, not text to trust: no control characters, bounded
+vendor="$(printf '%s' "$DNSMASQ_VENDOR_CLASS" | tr -d '\000-\037\177' | cut -c1-120)"
+opts="$(printf '%s' "$DNSMASQ_REQUESTED_OPTIONS" | tr -cd '0-9,' | cut -c1-200)"
+
+# a renewal that carries nothing keeps what we already know
+[ -n "$vendor$opts" ] || exit 0
+
+dir=/var/run/travel/fp
+mkdir -p "$dir"
+f="$dir/$(printf '%s' "$mac" | tr -d ':')"
+printf 'vendor=%s\nopts=%s\nat=%s\n' "$vendor" "$opts" "$(date +%s)" > "$f.tmp" && mv "$f.tmp" "$f"
+exit 0
