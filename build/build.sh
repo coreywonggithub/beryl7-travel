@@ -83,7 +83,8 @@ printf 'image=%s\ncommit=%s\nbuilt=%s\n' "${IMAGE_LABEL:-unlabelled}" \
 # Hand patches to other packages' files (docs/hand-patches.md) run at first boot and refuse quietly
 # when the code they hook onto has changed, so try them on this build's own sources first
 "$PROJ/build/check-hand-patches.sh" feeds/packages/net/travelmate/files/travelmate-functions.sh \
-	package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/supplicant.uc ||
+	package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/supplicant.uc \
+	feeds/packages/net/tailscale/files/tailscale.init ||
 	{ log "a hand patch no longer fits this build's sources: see docs/hand-patches.md"; exit 1; }
 log "hand patches fit"
 

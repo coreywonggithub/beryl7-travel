@@ -1,0 +1,15 @@
+#!/bin/sh
+# ts-memguard: restart tailscaled if its memory balloons (2026-10-19). Run by cron every 10 minutes.
+# Why: before the Go memory limit (files/etc/uci-defaults/95_beryl7_tailscale_memlimit), tailscaled reached
+# 217 MB on this 512 MB router in exit-node use. With the limit it peaked at 77 MB in the A/B test, but a
+# few minutes cannot prove days, so this is the insurance for a trip: it acts only past the line, and a
+# restart costs a few seconds of tunnel (Tailscale keeps its exit-node choice across restarts).
+# TS_MEMGUARD_MB overrides the line, for testing.
+limit_mb="${TS_MEMGUARD_MB:-180}"
+p="$(pidof tailscaled | cut -d' ' -f1)"
+[ -n "$p" ] || exit 0
+rss="$(awk '/^VmRSS/ { print int($2 / 1024) }' "/proc/$p/status" 2>/dev/null)"
+[ -n "$rss" ] || exit 0
+[ "$rss" -gt "$limit_mb" ] || exit 0
+logger -t ts-memguard "tailscaled at $rss MB, over the $limit_mb MB line: restarting it"
+/etc/init.d/tailscale restart >/dev/null 2>&1

@@ -9,7 +9,11 @@ boot() {
 	# Tailscale must never manage the firewall here: it writes
 	# src_valid_mark=1, which silently breaks nikki's TPROXY (nikki #903).
 	# The router's own zone for tailscale0 does that job instead.
+	# Tailscale 1.102 as OpenWrt builds it (no self-updater) refuses every 'set' while the saved prefs
+	# still say AutoUpdate.Apply=true, which a router upgraded from 1.98 carries (image v11, 2026-10-15).
+	# Switching it off is the one change it accepts then, and harmless anywhere else.
 	( for i in $(seq 1 30); do
+		tailscale set --auto-update=false >/dev/null 2>&1
 		tailscale set --netfilter-mode=off --accept-dns=false >/dev/null 2>&1 && break
 		sleep 2
 	  done

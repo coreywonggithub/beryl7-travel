@@ -48,6 +48,25 @@ Run the scripts again; each is idempotent and refuses if its hook is gone. From 
 
 ## The patches
 
+### 95: a Go memory limit for tailscaled (added 2026-10-19)
+
+- **File:** `/etc/init.d/tailscale` (package tailscale, openwrt/packages `net/tailscale`). Script:
+  `files/etc/uci-defaults/95_beryl7_tailscale_memlimit`. Hook: the line
+  `  procd_append_param env TS_NO_LOGS_NO_SUPPORT=true`; it adds `GOMEMLIMIT=100MiB` to procd's env after it.
+- **Mark:** `beryl7: memlimit`.
+- **Why (soak run 3, 2026-10-15 to 10-19):** in exit-node use tailscaled's memory rose 116 to 150 MB (+18 MB a day) and
+  peaked at 217 MB on a 512 MB router. A heap profile showed live memory flat near 65 to 72 MB, 78 to 81% of it
+  wireguard-go's packet-buffer pool (full within minutes, not growing for days); the rest was Go keeping freed memory.
+  A soft limit makes Go collect and return memory sooner. A/B test on the router 2026-10-19, same load through an
+  exit node: peak 94 MB without, 77 MB with; 87 vs 85 Mbps over two streams; 201 to 208 Mbps single-stream with it.
+- **Checked** by `build/check-hand-patches.sh` against each build's tailscale init script (its third input).
+- **The guard beside it:** `/usr/libexec/travel/ts-memguard` (in `luci-app-travel`), run by cron every 10 minutes
+  (the line comes from `80_travel`), restarts tailscaled if its memory passes 180 MB. With the limit it never
+  should; it is there because a few hours of testing cannot prove weeks. A restart costs a few seconds of tunnel,
+  and Tailscale keeps its exit-node choice. It logs under the tag `ts-memguard`.
+- **Drop when:** OpenWrt's tailscale init script sets a memory limit itself, or Tailscale stops ballooning on routers.
+
+
 ### 96: travelmate scans through the access point
 
 - **File:** `/usr/lib/travelmate-functions.sh`, function `f_scan` (package travelmate,

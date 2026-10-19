@@ -90,6 +90,13 @@ fi
 add_zone tailscale tailscale ACCEPT
 add_forwarding lan tailscale
 /etc/init.d/tailscale enable 2>/dev/null
+# Tailscale's memory guard (2026-10-19): every 10 minutes, restart tailscaled if it has passed 180 MB
+# (/usr/libexec/travel/ts-memguard), the insurance on top of the image's Go memory limit
+# (docs/hand-patches.md, 95). Added once; cron starts at boot only when a crontab exists.
+mkdir -p /etc/crontabs
+grep -qF '/usr/libexec/travel/ts-memguard' /etc/crontabs/root 2>/dev/null ||
+	echo '*/10 * * * * /usr/libexec/travel/ts-memguard' >>/etc/crontabs/root
+[ -x /etc/init.d/cron ] && /etc/init.d/cron enable 2>/dev/null
 
 # --- UniFi WireGuard profiles land in this zone (see wg_import) -------------
 add_zone vpn "" REJECT

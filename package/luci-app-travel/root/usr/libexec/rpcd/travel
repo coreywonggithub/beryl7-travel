@@ -561,6 +561,7 @@ m_device_kind() {
 m_tailscale_login() {
 	local url i host
 	# Tailscale must never manage the firewall here (see /etc/init.d/travel)
+	tailscale set --auto-update=false >/dev/null 2>&1	# see egress: 1.102 refuses sets while AutoUpdate.Apply is saved
 	tailscale set --netfilter-mode=off --accept-dns=false >/dev/null 2>&1
 	[ "$(tsinfo state)" = Running ] && ok
 	host="$(uci -q get system.@system[0].hostname)"
@@ -581,6 +582,7 @@ m_tailscale_login() {
 }
 
 m_tailscale_logout() {
+	tailscale set --auto-update=false >/dev/null 2>&1	# see egress
 	tailscale set --exit-node= >/dev/null 2>&1
 	tailscale logout >/dev/null 2>&1
 	/usr/libexec/travel/egress apply >/dev/null 2>&1

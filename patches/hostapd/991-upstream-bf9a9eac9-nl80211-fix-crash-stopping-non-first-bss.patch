@@ -1,0 +1,49 @@
+From bf9a9eac980b5423bd3f995108bd5beaad3841b2 Mon Sep 17 00:00:00 2001
+From: Nicolas Escande <nico.escande@gmail.com>
+Date: Wed, 4 Mar 2026 18:41:40 +0100
+Subject: [PATCH] nl80211: Fix a crash when stopping non-first BSS during ACS
+
+When a non-MLD interface is stopped during ACS while this BSS isn't the
+first of the DRV on a MLO capable phy, we end up deleting the BSS
+without calling wpa_driver_nl80211_deinit() which does not cancel the
+pending scan_timeout. The problem was mitigated for MLD by cancelling
+the scan timeout in the nl80211_remove_link() by 5ce1d4180386 ("nl80211:
+Fix crash by cancelling scan timeout before a BSS is removed"), but for
+non-MLD it will still trigger a use after free and a crash like below.
+
+As a lack of a better place, lets cancel the timeout when we remove the
+underlying wlan interface. At that point it's clear we do not care about
+handling this timeout anyway.
+
+ Program terminated with signal SIGSEGV, Segmentation fault.
+ #0  0x00000000002a134c in wpa_supplicant_event (ctx=0x7fa6512350, event=EVENT_SCAN_RESULTS, data=0x0) at ../src/ap/drv_callbacks.c:2623
+ 2623			if (!hapd->iface->scan_cb && hapd->conf->mld_ap) {
+ (gdb) bt
+ #0  0x00000000002a134c in wpa_supplicant_event (ctx=0x7fa6512350, event=EVENT_SCAN_RESULTS, data=0x0) at ../src/ap/drv_callbacks.c:2623
+ #1  0x0000000000375e30 in wpa_driver_nl80211_scan_timeout (eloop_ctx=0x7fa64f4f70, timeout_ctx=0x7fa6512350) at ../src/drivers/driver_nl80211_scan.c:187
+ #2  0x00000000002e31d8 in eloop_run () at ../src/utils/eloop.c:1210
+ #3  0x000000000027be60 in hostapd_global_run (ifaces=0x7fc025adc0, daemonize=0, pid_file=0x0) at main.c:595
+ #4  0x000000000027cd64 in main (argc=4, argv=0x7fc025aed8) at main.c:1098
+
+Signed-off-by: Nicolas Escande <nico.escande@gmail.com>
+---
+ src/drivers/driver_nl80211.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 031e68704..bf75b7b48 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9536,6 +9536,9 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
+ 
+ 	wpa_printf(MSG_DEBUG, "nl80211: %s(type=%d ifname=%s) ifindex=%d added_if=%d",
+ 		   __func__, type, ifname, ifindex, bss->added_if);
++
++	eloop_cancel_timeout(wpa_driver_nl80211_scan_timeout, drv, bss->ctx);
++
+ 	if (ifindex > 0 && (bss->added_if || bss->ifindex != ifindex))
+ 		nl80211_remove_iface(drv, ifindex);
+ 	else if (ifindex > 0 && !bss->added_if) {
+-- 
+2.54.0 (Apple Git-157)
+

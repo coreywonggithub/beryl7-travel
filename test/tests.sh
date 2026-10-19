@@ -36,6 +36,7 @@ check "first boot: wan metric 10" [ "$(uci -q get network.wan.metric)" = 10 ]
 check "first boot: travelmate enabled on trm_wwan" [ "$(uci -q get travelmate.global.trm_iface)" = trm_wwan ]
 check "first boot: travelmate does no background scans" [ "$(uci -q get travelmate.global.trm_proactive)" = 0 ]
 check "first boot: travelmate waits 30 s before it starts" [ "$(uci -q get travelmate.global.trm_triggerdelay)" = 30 ]
+check "first boot: Tailscale's memory guard runs every 10 minutes" grep -qxF '*/10 * * * * /usr/libexec/travel/ts-memguard' /etc/crontabs/root
 ( . /etc/uci-defaults/70_beryl7_zram )
 check "first boot: zram swap compresses with zstd" [ "$(uci -q get system.@system[0].zram_comp_algo)" = zstd ]
 ( . /etc/uci-defaults/94_beryl7_mu_edca )
@@ -53,6 +54,7 @@ f1="$(uci show firewall | grep -c "=forwarding")"
 checks "first boot twice: still one tailscale zone" '[ "$z1" = 1 ] && [ "$(uci show firewall | grep -c "name=.tailscale.")" = 1 ]'
 checks "first boot twice: still one vpn zone" '[ "$z2" = 1 ] && [ "$(uci show firewall | grep -c "name=.vpn.")" = 1 ]'
 check "first boot twice: no duplicate forwardings" [ "$f1" = "$(uci show firewall | grep -c "=forwarding")" ]
+check "first boot twice: one memory-guard line" [ "$(grep -c ts-memguard /etc/crontabs/root)" = 1 ]
 check "first boot: trm_wwan in the wan zone once" [ "$(uci show firewall | grep -o "trm_wwan" | wc -l)" = 1 ]
 
 # ---------------------------------------------------------------- status
@@ -97,6 +99,15 @@ check "exit node: tailscale told to use it, LAN access kept" calls_has "tailscal
 check "exit node: running" [ "$(cat /var/run/travel/active)" = exitnode ]
 check "exit node: lookups go through the tunnel" [ "$(uci -q get dhcp.@dnsmasq[0].noresolv)" = 1 ]
 check "exit node: tunnel resolvers set" sh -c "uci -q get dhcp.@dnsmasq[0].server | grep -q '1.1.1.1'"
+# A router upgraded from Tailscale 1.98 keeps AutoUpdate.Apply=true, and 1.102 built without its
+# self-updater then refuses every set (the Beryl, image v11, 2026-10-15): the panel must clear it first
+touch /tmp/ts-autoupdate-apply
+reset_calls
+r="$(call set_mode '{"mode":"exitnode","exit_node":"100.64.0.11"}')"
+check "exit node after an upgrade from 1.98: auto-update switched off first" calls_has "tailscale set --auto-update=false"
+check "exit node after an upgrade from 1.98: tailscale told to use it" calls_has "tailscale set --exit-node=100.64.0.11 --exit-node-allow-lan-access=true"
+check "exit node after an upgrade from 1.98: running, not fallen back to direct" [ "$(cat /var/run/travel/active)" = exitnode ]
+rm -f /tmp/ts-autoupdate-apply
 s="$(call status)"
 # peers named the way a real tailnet names them: a host name with its own spelling and a MagicDNS
 # short name; the labels are keyed by either (two Apple TVs share the host name 'apple-tv').
@@ -671,5 +682,20 @@ for v in aquamarine aquamarine-dark; do
 	for f in $(ls /etc/uci-defaults/ | grep '^30_luci-theme-' | sort); do ( . "/etc/uci-defaults/$f" ) >/dev/null 2>&1; done
 	checks "theme: a kept $v survives a firmware upgrade" '[ "$(uci -q get luci.main.mediaurlbase)" = /luci-static/'$v' ]'
 done
+
+# ---------------------------------------------------------------- Tailscale's memory guard (2026-10-19)
+# A stand-in tailscaled (a script keeps its own name as the process name); TS_MEMGUARD_MB moves the line
+# to either side of whatever memory the stand-in uses.
+check "memory guard: installed and executable" [ -x /usr/libexec/travel/ts-memguard ]
+reset_calls; /usr/libexec/travel/ts-memguard
+checks "memory guard: nothing to do when tailscaled is not running" '! calls_has "tailscale restart"'
+printf '#!/bin/sh\nsleep 60\n' >/tmp/tailscaled; chmod 755 /tmp/tailscaled
+/tmp/tailscaled & tsp=$!
+sleep 1
+reset_calls; TS_MEMGUARD_MB=100000 /usr/libexec/travel/ts-memguard
+checks "memory guard: below its line, tailscaled is left alone" '[ -n "$(pidof tailscaled)" ] && ! calls_has "tailscale restart"'
+reset_calls; TS_MEMGUARD_MB=-1 /usr/libexec/travel/ts-memguard
+check "memory guard: over its line, tailscaled is restarted" calls_has "/etc/init.d/tailscale restart"
+kill "$tsp" 2>/dev/null
 
 echo "RESULT $pass passed, $fail failed"

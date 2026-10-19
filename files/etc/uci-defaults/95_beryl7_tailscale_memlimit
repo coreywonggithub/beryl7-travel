@@ -1,0 +1,24 @@
+#!/bin/sh
+# 95_beryl7_tailscale_memlimit: give tailscaled a Go soft memory limit, GOMEMLIMIT (2026-10-19).
+# Why: in exit-node use, tailscaled's WireGuard packet-buffer pool (wireguard-go PopulatePools, 81% of its
+# live heap) grows with traffic, and Go lets the heap reach about twice what is live before collecting. In
+# soak run 3's phase B it rose from 116 to 150 MB (+18 MB a day) and peaked at 217 MB (VmHWM) on a 512 MB
+# router; without the exit node it sat flat near 95 MB. A soft limit makes the GC collect sooner as it
+# nears the limit, so pooled buffers go back instead of piling up. It is soft: Go may exceed it rather
+# than stall, so it cannot starve the tunnel.
+# This edits the tailscale package's init script at first boot, so it is a hand patch: an upgrade of the
+# tailscale package removes it until this runs again (docs/hand-patches.md, build/check-hand-patches.sh).
+# Idempotent; refuses quietly, with a log line, if the line it hooks onto has changed.
+f="${1:-/etc/init.d/tailscale}"
+mark='beryl7: memlimit'
+limit='100MiB'
+hook='  procd_append_param env TS_NO_LOGS_NO_SUPPORT=true'
+
+[ -f "$f" ] || exit 0
+grep -qF "$mark" "$f" && exit 0
+if ! grep -qxF "$hook" "$f"; then
+	logger -t beryl7 "95_beryl7_tailscale_memlimit: the tailscale init script changed, GOMEMLIMIT not set"
+	exit 0
+fi
+sed -i "s|^$hook\$|&\n  procd_append_param env GOMEMLIMIT=$limit # $mark|" "$f"
+exit 0

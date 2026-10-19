@@ -2,5 +2,15 @@
 echo "tailscale $*" >>/tmp/calls.log
 case "$1" in
 status) cat /tmp/ts-status.json 2>/dev/null || echo '{"BackendState":"NeedsLogin","AuthURL":""}' ;;
-set|up|logout) exit "$(cat /tmp/ts-fail 2>/dev/null || echo 0)" ;;
+set)
+	# Tailscale 1.102 as OpenWrt builds it (no self-updater) refuses every set while the saved prefs
+	# still say AutoUpdate.Apply=true, as a router upgraded from 1.98 carries (the Beryl, 2026-10-15)
+	if [ -f /tmp/ts-autoupdate-apply ]; then
+		case " $* " in
+		*" --auto-update=false "*) rm -f /tmp/ts-autoupdate-apply ;;
+		*) echo "Auto-update support is disabled in this build" >&2; exit 1 ;;
+		esac
+	fi
+	exit "$(cat /tmp/ts-fail 2>/dev/null || echo 0)" ;;
+up|logout) exit "$(cat /tmp/ts-fail 2>/dev/null || echo 0)" ;;
 esac

@@ -81,8 +81,28 @@ hostapd's debug messages are compiled out in OpenWrt, so `-d` shows nothing; the
   30 s timeout survives with the freed context, and when it fires and aborting the scan fails, hostapd
   dies. Run A: HT_SCAN and removal at 17:02:02, crash at 17:02:56.
 
-Fix: `patches/hostapd/991-beryl7-nl80211-cancel-scan-timeout-of-removed-bss.patch` cancels that BSS's scan
+Fix (images v10 to v12; replaced by upstream's commit in v13, see the correction below): our former
+`patches/hostapd/991-beryl7-nl80211-cancel-scan-timeout-of-removed-bss.patch` cancelled that BSS's scan
 timeout in the other branch too (cancel only: firing it early, as the first-BSS branch does, would run scan
 handling on an access point being torn down). The 990 and hostapd.uc backports stay: correct, just not this.
 
-Reported upstream 2026-10-12: https://github.com/openwrt/openwrt/issues/25840 (the code is upstream hostap's too).
+Reported upstream 2026-10-12: https://github.com/openwrt/openwrt/issues/25840.
+
+## Correction, 2026-10-16: upstream hostap had already fixed it
+
+The report said upstream hostap main still has the bug. **Wrong:** we read the non-first-BSS branch and
+missed a cancel at the top of the same function. hostap fixed this crash twice before we met it:
+`5ce1d4180` (2025-08-22, "nl80211: Fix crash by cancelling scan timeout before a BSS is removed", MLD only,
+via `nl80211_remove_link()`), and **`bf9a9eac9` (2026-03-04, Nicolas Escande, "nl80211: Fix a crash when
+stopping non-first BSS during ACS")**, which cancels the scan timeout at the top of
+`wpa_driver_nl80211_if_remove()` for every BSS. Its backtrace is ours (`wpa_supplicant_event`,
+`EVENT_SCAN_RESULTS`, from `wpa_driver_nl80211_scan_timeout` in `eloop_run`). It is in hostapd 2.12
+(branch `2_12`, 2026-08-07), which OpenWrt main ships; **openwrt-25.12 ships hostapd 2025-08-26
+(`ca266cc2`), which has `5ce1d4180` but not `bf9a9eac9`**, so every 25.12 build has the bug.
+
+Our 991 was an independent equivalent (it cancelled in the non-first branch only; upstream's covers both).
+**Replaced 2026-10-16, from image v13 on:**
+`patches/hostapd/991-upstream-bf9a9eac9-nl80211-fix-crash-stopping-non-first-bss.patch` is upstream's commit as
+`git format-patch` made it, applying on 25.12's hostapd at an offset of -278 lines; ours is deleted. The useful upstream step is asking OpenWrt to backport `bf9a9eac9` to
+openwrt-25.12, not a hostap patch. Lesson: before calling code unfixed upstream, read the whole function
+and run `git log -S` on the fix line.

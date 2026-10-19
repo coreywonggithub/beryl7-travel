@@ -143,6 +143,11 @@ apply() {
 	esac
 	[ -n "$err" ] && active=direct
 
+	# Tailscale 1.102 as OpenWrt builds it (no self-updater) refuses every 'set' while the saved prefs
+	# still say AutoUpdate.Apply=true, which a router upgraded from 1.98 carries (image v11, 2026-10-15).
+	# Switching it off is the one change it accepts then, and harmless anywhere else.
+	tailscale set --auto-update=false >/dev/null 2>&1
+
 	# Everything else off first, so two tunnels never fight over the default route
 	[ "$active" = exitnode ] || tailscale set --exit-node= >/dev/null 2>&1
 	[ "$active" = wireguard ] || wg_all_down
